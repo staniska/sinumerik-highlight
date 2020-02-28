@@ -161,7 +161,7 @@
             "name": "sinumerik_circle_mod"
           }
           {
-            "match": "ANG|RND(?=\\=)"
+            "match": "(ANG|RND)(?=\\=)"
             "name": "sinumerik_line_mod"
           }
           {
