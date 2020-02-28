@@ -1,0 +1,201 @@
+{
+    fileTypes: [
+      "mpf",
+      "spf",
+    ]
+    scopeName: "source.sinumerik"
+    name: "sinumerik"
+    patterns: [
+      {
+        include: "#statements"
+      }
+    ]
+    repository:
+      statements:
+        patterns: [
+          {
+            include: "#variables"
+          }
+          {
+            include: "#keywords"
+          }
+          {
+            include: "#sinumerik_axis"
+          }
+          {
+            include: "#sinumerik_mark"
+          }
+          {
+            include: "#sinumerik_M"
+          }
+          {
+            include: "#sinumerik_S"
+          }
+          {
+            include: "#sinumerik_feed"
+          }
+          {
+            include: "#g_func"
+          }
+          {
+            include: "#sys_var"
+          }
+        ]
+      g_func:
+        patterns: [
+          {
+            "match": "(?<=[\\s]|^)G\\d+(?=\\s)"
+            "name": "sinumerik_g_func"
+          }
+          {
+            "match": "(?<=[\\s]|^)[MP]?CALL|EXTCALL|SUPA"
+            "name": "sinumerik_g_func"
+          }
+
+        ]
+      sys_var:
+        patterns: [
+          {
+            "match": "\\$AA_IW|\\$AA_IM"
+            "name": "sys_var"
+          }
+          {
+            "match": "\\$TC_\\w+\\d+"
+            "name": "sys_var"
+          }
+          {
+            "match": "\\$AN_CEC\\w*(?=\\[)"
+            "name": "sys_var"
+          }
+
+        ]
+      keywords:
+        patterns: [
+          {
+            "match": "(?<=(\\W)|(^[XYZWVUABCFP])|(\\W[XYZWVUABCFP]))\\d+\\.?\\d*"
+            "name": "constant.numeric"
+          }
+          {
+            "match": "[\\=\\-\\+\\/\\<\\>]"
+            "name": "keyword.operator.sinumerik"
+          }
+          {
+            "match": "(?<=[\\s]|^)((B_)?(AND|OR|NOT|XOR))(?=\\s)"
+            "name": "keyword.operator.sinumerik"
+          }
+          {
+            "match": "(\\b((DIV)|(MOD)|(SIN)|(COS)|(TAN)|(ASIN)|(ACOS)|(ATAN2)|(SQRT)|(ABS)|(POT)|(TRUNC)|(ROUND)|(LN)|(EXP)))(?=\\()"
+            "name": "sinumerik_math"
+          }
+          {
+            "match": "(?<=[\\s]|^|\\(|\\,)(PROC|DEF|INT|REAL|BOOL|CHAR|STRING|AXIS|FRAME)(?=\\s)"
+            "name": "storage.type.sinumerik"
+          }
+          {
+            "match": ";.*"
+            "name": "comment.sinumerik"
+          }
+          {
+            "match": "(?<=[\\s]|^)IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT|((?<=\\s)P)"
+            "name": "keyword.control.sinumerik"
+          }
+          {
+            'begin': '"'
+            'beginCaptures':
+              '0':
+                 'name': 'punctuation.definition.string.begin.sinumerik'
+            'end': '"'
+            'endCaptures':
+              '0':
+                'name': 'punctuation.definition.string.end.sinumerik'
+            'name': 'string.quoted.double.sinumerik'
+          }
+          {
+            "begin": "EXECSTRING\\("
+            "beginCaptures":
+              "0":
+                 "name": "punctuation.definition.execstring.begin.sinumerik"
+            "end": "\\)"
+            "endCaptures":
+              "0":
+                "name": "punctuation.definition.execstring.end.sinumerik"
+            "name": "string.execstring.sinumerik"
+          }
+        ]
+       sinumerik_feed:
+        patterns: [
+          {
+            "match": "(?<=[\\s]|^)(F|FA)(?=\\=?\\d+)"
+            "name": "sinumerik_feed"
+          }
+        ]
+       sinumerik_axis:
+        patterns: [
+          {
+            "match": "(?<=[\\s]|^)[XYZWVUABC](?=\\=?((\\d+)|(AC\\()|(IC\\()))"
+            "name": "sinumerik_axis"
+          }
+          {
+            "match": "(?<=[\\s]|^)[XYZWVUABC](?=\\=\\w+)"
+            "name": "sinumerik_axis"
+          }
+          {
+            "match": "(?<=[\\[])[XYZWVUABC](?=\\])"
+            "name": "sinumerik_axis"
+          }
+          {
+            "match": "(?<=[\\s]|^)[IJK](?=\\=?(\\d+|AC|IC))"
+            "name": "sinumerik_circle_center"
+          }
+          {
+            "match": "(?<=\\=)AC\\(|IC\\("
+            "name": "sinumerik_ac_ic"
+          }
+          #Rotate direction
+          {
+            "match": "(?<=\\=)ACN\\(|DCN\\(|DP\\("
+            "name": "sinumerik_ac_ic"
+          }
+          {
+            "match": "AP|RP|CR(?=\\=)"
+            "name": "sinumerik_circle_mod"
+          }
+          {
+            "match": "ANG|RND(?=\\=)"
+            "name": "sinumerik_line_mod"
+          }
+          {
+            "match": "(?<=[\\s]|^)[A]?(TRANS|MIRROR|SCALE|ROT)"
+            "name": "sinumerik_frame"
+          }
+
+        ]
+       sinumerik_mark:
+        patterns: [
+          {
+            "match": "^[a-zA-Z_][a-zA-Z_][a-zA-Z_0-9]*(?=\\:)"
+            "name": "sinumerik_mark"
+          }
+          {
+            "match": "(?<=GOTO\\s|GOTO[BF]\\s)(\\w+)"
+            "name": "sinumerik_mark_target"
+          }
+          {
+            "match": "(?<=REPEAT\\s)\\w+"
+            "name": "sinumerik_mark_target"
+          }
+
+
+        ]
+      sinumerik_M:
+        patterns: [
+          "match": "(?<=[\\s]|^)M\\d+"
+          "name": "sinumerik_M"
+        ]
+      sinumerik_S:
+        patterns: [
+          "match": "(?<=[\\s]|^)S\\d+"
+          "name": "sinumerik_S"
+        ]
+
+}

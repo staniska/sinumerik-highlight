@@ -1,0 +1,26 @@
+{
+  "context-menu": {
+    "atom-text-editor": [
+      {
+        "label": "Toggle sinumerik",
+        "command": "sinumerik:toggle"
+      }
+    ]
+  },
+  "menu": [
+    {
+      "label": "Packages",
+      "submenu": [
+        {
+          "label": "Sinumerik",
+          "submenu": [
+            {
+              "label": "Toggle",
+              "command": "sinumerik:toggle"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

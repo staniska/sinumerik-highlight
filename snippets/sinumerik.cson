@@ -1,0 +1,147 @@
+# Important: When adding a new snippet,
+# there is a second section halfway down this file
+# where you need to null-out the snippet to prevent it from
+# appearing in tags or embedded contexts
+".sinumerik":
+# Сonditional jumps
+  'if_endif':
+    "prefix": "IF_ELSE"
+    "body": 'IF (${1:R}) \nENDIF'
+  'if_goto':
+    "prefix": "IF_GOTO"
+    "body": 'IF (${1:R}) GOTO'
+  'else':
+    "prefix": "ELSE"
+    "body": 'ELSE\n\t${1:}'
+# Cycles
+  'while':
+    "prefix": "WHILE"
+    "body": 'WHILE (${1:R})\nENDWHILE'
+  'loop':
+    "prefix": "LOOP"
+    "body": 'LOOP \n\t${1:}\nENDLOOP'
+  'for':
+      "prefix": "FOR"
+      "body": 'FOR ${1:R}=0 TO 10\nENDFOR'
+  'repeat':
+    "prefix": "REPEAT"
+    "body": 'REPEAT ${1:R} P='
+#Logic
+  'and':
+      "prefix": "AND"
+      "body": 'AND (${1:R})'
+  'or':
+      "prefix": "OR"
+      "body": 'OR (${1:R})'
+#Machine coordinate
+  'AA_IM':
+    "prefix": 'AA_IM'
+    "body": '\$AA_IM[${1:ax_name}]='
+#Work coordinate
+  'AA_IW':
+    "prefix": 'AA_IW'
+    "body": '\$AA_IW[${1:ax_name}]='
+# Head geomethry
+  'TC_CARR':
+    "prefix": 'TC_CARR'
+    "body": '\$TC_CARR${1:1}[${2:num]='
+#Tool data
+  'TC_DP':
+    "prefix": 'TC_DP'
+    "body": '\$TC_DP${1:1}[t,d]='
+
+
+# Interpolation copmensation data
+  'AN_CEC':
+    "prefix": 'AN_CEC'
+    "body": '\$AN_CEC[${1:n},m]='
+  'AN_CEC_INPUT_AXIS':
+    "prefix": 'AN_CEC_INPUT_AXIS'
+    "body": '\$AN_CEC_INPUT_AXIS[${1:n}]='
+  'AN_CEC_OUTPUT_AXIS':
+    "prefix": 'AN_CEC_OUTPUT_AXIS'
+    "body": '\$AN_CEC_OUTPUT_AXIS[${1:n}]='
+  'AN_CEC_STEP':
+    "prefix": 'AN_CEC_STEP'
+    "body": '\$AN_CEC_STEP[${1:n}]='
+  'AN_CEC_MIN':
+    "prefix": 'AN_CEC_MIN'
+    "body": '\$AN_CEC_MIN[${1:n}]='
+  'AN_CEC_MAX':
+    "prefix": 'AN_CEC_MAX'
+    "body": '\$AN_CEC_MAX[${1:n}]='
+  'AN_CEC_DIRECTION':
+    "prefix": 'AN_CEC_DIRECTION'
+    "body": '\$AN_CEC_DIRECTION[${1:n}]='
+  'AN_CEC_MULT_BY_TABLE':
+    "prefix": 'AN_CEC_MULT_BY_TABLE'
+    "body": '\$AN_CEC_MULT_BY_TABLE[${1:n}]='
+  'AN_CEC_IS_MODULO':
+    "prefix": 'AN_CEC_IS_MODULO'
+    "body": '\$AN_CEC_IS_MODULO[${1:n}]='
+# Coordinate modificators
+  'AC':
+    'prefix': 'AC'
+    'body': 'AC(${1:}) '
+  'IC':
+    'prefix': 'IC'
+    'body': 'IC(${1:}) '
+# Rotate direction
+  'ACN':
+    'prefix': 'ACN'
+    'body': 'ACN(${1:}) '
+  'DCN':
+    'prefix': 'DCN'
+    'body': 'DCN(${1:}) '
+  'DP':
+    'prefix': 'DP'
+    'body': 'DP(${1:}) '
+#Math
+  'SIN':
+    'prefix': 'SIN'
+    'body': 'SIN(${1:})'
+  'COS':
+    'prefix': 'COS'
+    'body': 'COS(${1:})'
+  'TAN':
+    'prefix': 'TAN'
+    'body': 'TAN(${1:})'
+  'DIV':
+    'prefix': 'DIV'
+    'body': 'DIV ${1:}'
+  'MOD':
+    'prefix': 'MOD'
+    'body': 'MOD ${1:}'
+  'ASIN':
+    'prefix': 'ASIN'
+    'body': 'ASIN(${1:})'
+  'ACOS':
+    'prefix': 'ACOS'
+    'body': 'ACOS(${1:})'
+  'ATAN2':
+    'prefix': 'ATAN2'
+    'body': 'ATAN2(${1:},)'
+  'SQRT':
+    'prefix': 'SQRT'
+    'body': 'SQRT(${1:})'
+  'ABS':
+    'prefix': 'ABS'
+    'body': 'ABS(${1:})'
+  'POT':
+    'prefix': 'POT'
+    'body': 'POT(${1:})'
+  'TRUNC':
+    'prefix': 'TRUNC'
+    'body': 'TRUNC(${1:})'
+  'ROUND':
+    'prefix': 'ROUND'
+    'body': 'ROUND(${1:})'
+  'LN':
+    'prefix': 'LN'
+    'body': 'LN(${1:})'
+  'EXP':
+    'prefix': 'EXP'
+    'body': 'EXP(${1:})'
+
+
+

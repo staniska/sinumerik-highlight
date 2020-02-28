@@ -1,0 +1,5 @@
+'.source.sinumerik':
+  'editor':
+    'commentStart': '; '
+    'increaseIndentPattern': '(?i:(\\bIF\\b(?!.+GOTO))|(\\bWHILE\\b)|(\\bFOR\\b)|(\\bELSE\\b)|(\\bLOOP\\b))'
+    'decreaseIndentPattern': '(?i:(\\bENDIF\\b)|(\\bENDWHILE\\b)|(\\bENDFOR\\b)|(\\bELSE\\b)|(\\bENDLOOP\\b))'
