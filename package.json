@@ -1,14 +1,14 @@
 {
-  "name": "sinumerik",
+  "name": "sinumerik-highlight",
   "main": "./lib/sinumerik",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Sinumerik highlight",
   "keywords": [
   ],
   "activationCommands": {
     "atom-workspace": "sinumerik:toggle"
   },
-  "repository": "https://github.com/atom/sinumerik",
+  "repository": "https://github.com/staniska/sinumerik-highlight",
   "license": "MIT",
   "engines": {
     "atom": ">=1.0.0 <2.0.0"
