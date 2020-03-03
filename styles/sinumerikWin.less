@@ -3,6 +3,9 @@
 }
 .sinumerikPanelHeadContainer{
   display: table;
+  position: absolute;
+  top: 0px;
+  z-index: 1;
 }
 
 .sinumerikPanelHead {
@@ -11,20 +14,36 @@
 }
 .sinumerikPanelCentralContainer {
   display: table;
+  position: absolute;
+  top: 40px;
 }
 .sinumerikPanelMain {
   background-color: coral;
   display: table-cell;
+  overflow: hidden;
 }
 .sinumerikPanelRight {
   background-color: aquamarine;
   display: table-cell;
 }
 .sinumerikPanelFootContainer {
-  display: table
+  display: table;
+  position: absolute;
+  bottom: -1px;
 }
 
 .sinumerikPanelFoot {
   background-color: cornsilk;
   display: table-cell;
 }
+
+.sinumerikPanelHeadButton {
+  border: 2px solid;
+  border-color: green;
+}
+
+.sinumerikPanelHeadButtonSelect {
+  border: 2px solid;
+  border-color: springgreen;
+}
+
