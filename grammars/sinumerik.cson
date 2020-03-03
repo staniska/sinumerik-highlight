@@ -56,7 +56,7 @@
       sys_var:
         patterns: [
           {
-            "match": "\\$AA_IW|\\$AA_IM"
+            "match": "\\$AA_IW|\\$AA_IM|\\$P_F|\\$P_TOOL[\\w]*|\\$P_D"
             "name": "sys_var"
           }
           {
@@ -74,6 +74,10 @@
           {
             "match": "(?<=(\\W)|(^[XYZWVUABCFP])|(\\W[XYZWVUABCFP]))\\d+\\.?\\d*"
             "name": "constant.numeric"
+          }
+          {
+            "match": "(?<=[\\s]|^)MSG(?=\\()"
+            "name": "sinumerik_msg"
           }
           {
             "match": "[\\=\\-\\+\\/\\<\\>]"
@@ -96,7 +100,7 @@
             "name": "comment.sinumerik"
           }
           {
-            "match": "(?<=[\\s]|^)IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT|((?<=\\s)P)"
+            "match": "(?<=[\\s]|^)(IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT)|((?<=\\s)P)"
             "name": "keyword.control.sinumerik"
           }
           {
