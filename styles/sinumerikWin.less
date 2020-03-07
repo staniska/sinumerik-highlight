@@ -1,5 +1,5 @@
 .sinumerikPanel {
-
+  background-color: whitesmoke;
 }
 .sinumerikPanelHeadContainer{
   display: table;
@@ -9,41 +9,96 @@
 }
 
 .sinumerikPanelHead {
-  background-color: bisque;
   display: table-cell;
 }
 .sinumerikPanelCentralContainer {
   display: table;
   position: absolute;
   top: 40px;
+  border-collapse: collapse;
 }
 .sinumerikPanelMain {
-  background-color: coral;
+  border: #eaeaeb 2px solid;
   display: table-cell;
   overflow: hidden;
 }
 .sinumerikPanelRight {
-  background-color: aquamarine;
+  border: #eaeaeb 2px solid;
   display: table-cell;
 }
 .sinumerikPanelFootContainer {
   display: table;
   position: absolute;
-  bottom: -1px;
+  bottom: 0px;
 }
 
 .sinumerikPanelFoot {
-  background-color: cornsilk;
   display: table-cell;
 }
 
 .sinumerikPanelHeadButton {
-  border: 2px solid;
-  border-color: green;
+  margin-left: 5px;
+  background-color: white;
+  border: gainsboro 2px solid;
+  height: 40px;
+  width: 60px;
+  transition-duration: 0.2s;
 }
+.sinumerikPanelHeadButton:hover {
+  background-color: gainsboro;
+}
+
+
 
 .sinumerikPanelHeadButtonSelect {
-  border: 2px solid;
-  border-color: springgreen;
+  margin-left: 5px;
+  background-color: gainsboro;
+  border: gainsboro 2px solid;
+  height: 40px;
+  width: 60px;
+  transition-duration: 0.2s;
 }
 
+.sinumerikPanelHeadButtonSelect:hover {
+  background-color: darkgrey;
+}
+
+.sinumerikSingleLineDebugFoot {
+  position: absolute;
+}
+
+.sinumerikSingleLineDebugMain {
+  position: absolute;
+  background-color: bisque;
+  width: 100px;
+  height: 100px;
+}
+
+
+
+.sinumerikCounturEditFoot {
+  position: absolute;
+  background-color: #ff8800;
+  width: 100px;
+  height: 100px;
+}
+
+.sinumerikCounturEditMain {
+  position: absolute;
+  background-color: #ff8800;
+  width: 100px;
+  height: 100px;
+}
+
+.sinumerikFootButton {
+  background-color: white;
+  border: gainsboro 2px solid;
+  height: 40px;
+  width: 60px;
+  transition-duration: 0.2s;
+  margin-left: 5px;
+  margin-top: 6px;
+}
+.sinumerikFootButton:hover {
+  background-color: gainsboro;
+}

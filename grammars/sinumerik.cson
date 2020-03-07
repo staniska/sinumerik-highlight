@@ -100,7 +100,7 @@
             "name": "comment.sinumerik"
           }
           {
-            "match": "(?<=[\\s]|^)(IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT)|((?<=\\s)P)"
+            "match": "(?<=[\\s]|^)(IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT)(?=\\s)|((?<=\\s)P)"
             "name": "keyword.control.sinumerik"
           }
           {
