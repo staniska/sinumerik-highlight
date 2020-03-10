@@ -32,6 +32,9 @@
             include: "#sinumerik_S"
           }
           {
+            include: "#sinumerik_T"
+          }
+          {
             include: "#sinumerik_feed"
           }
           {
@@ -51,7 +54,6 @@
             "match": "(?<=[\\s]|^)[MP]?CALL|EXTCALL|SUPA"
             "name": "sinumerik_g_func"
           }
-
         ]
       sys_var:
         patterns: [
@@ -129,7 +131,11 @@
        sinumerik_feed:
         patterns: [
           {
-            "match": "(?<=[\\s]|^)(F|FA)(?=\\=?\\d+)"
+            "match": "(?<=[\\s]|^)(F|FA|FB)(?=\\=?\\d+)"
+            "name": "sinumerik_feed"
+          }
+          {
+            "match": "(?<=[\\s]|^)(CFC|CFTCP|OFFN)"
             "name": "sinumerik_feed"
           }
         ]
@@ -161,7 +167,7 @@
             "name": "sinumerik_ac_ic"
           }
           {
-            "match": "AP|RP|CR(?=\\=)"
+            "match": "AP|AR|RP|CR(?=\\=)"
             "name": "sinumerik_circle_mod"
           }
           {
@@ -200,6 +206,13 @@
         patterns: [
           "match": "(?<=[\\s]|^)S\\d+"
           "name": "sinumerik_S"
+        ]
+      sinumerik_T:
+        patterns: [
+            {
+              "match": "(?<=[\\s]|^)[TD]\\d+"
+              "name": "sinumerik_T"
+            }
         ]
 
 }
