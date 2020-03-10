@@ -149,6 +149,10 @@
   'ANG':
     'prefix': 'ANG'
     'body': 'ANG=${1:}'
+#msg
+  'MSG':
+    'prefix': 'MSG'
+    'body': 'MSG("${1:}")'
 
 
 
