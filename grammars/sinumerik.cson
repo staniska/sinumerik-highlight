@@ -178,6 +178,10 @@
             "match": "(?<=[\\s]|^)[A]?(TRANS|MIRROR|SCALE|ROT)"
             "name": "sinumerik_frame"
           }
+          {
+            "match": "(?<=[\\s]|^)(SPCON\\(.\\)|SPCOF)"
+            "name": "sinumerik_frame"
+          }
 
         ]
        sinumerik_mark:
