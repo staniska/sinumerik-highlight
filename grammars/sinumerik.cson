@@ -142,7 +142,7 @@
        sinumerik_axis:
         patterns: [
           {
-            "match": "(?<=[\\s]|^)[XYZWVUABC](?=\\=?((\\d+)|(AC\\()|(IC\\()))"
+            "match": "(?<=[\\s]|^)[XYZWVUABC](?=\\=?(\\-?(\\d+)|(AC\\()|(IC\\()))"
             "name": "sinumerik_axis"
           }
           {
@@ -171,7 +171,7 @@
             "name": "sinumerik_circle_mod"
           }
           {
-            "match": "(ANG|RND)(?=\\=)"
+            "match": "(ANG|RND|RNDM|CHR|CHF)(?=\\=)"
             "name": "sinumerik_line_mod"
           }
           {
