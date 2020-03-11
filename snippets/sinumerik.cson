@@ -146,6 +146,15 @@
   'RND':
     'prefix': 'RND'
     'body': 'RND=${1:}'
+  'RNDM':
+    'prefix': 'RNDM'
+    'body': 'RNDM=${1:}'
+  'CHR':
+    'prefix': 'CHR'
+    'body': 'CHR=${1:}'
+  'CHF':
+    'prefix': 'CHF'
+    'body': 'CHF=${1:}'
   'ANG':
     'prefix': 'ANG'
     'body': 'ANG=${1:}'
