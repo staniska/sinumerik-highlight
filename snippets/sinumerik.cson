@@ -36,11 +36,11 @@
 #Machine coordinate
   'AA_IM':
     "prefix": 'AA_IM'
-    "body": '\$AA_IM[${1:ax_name}]='
+    "body": '\$AA_IM[${1:ax_name}]'
 #Work coordinate
   'AA_IW':
     "prefix": 'AA_IW'
-    "body": '\$AA_IW[${1:ax_name}]='
+    "body": '\$AA_IW[${1:ax_name}]'
 # Head geomethry
   'TC_CARR':
     "prefix": 'TC_CARR'

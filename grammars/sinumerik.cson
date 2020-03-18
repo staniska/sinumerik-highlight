@@ -102,7 +102,7 @@
             "name": "comment.sinumerik"
           }
           {
-            "match": "(?<=[\\s]|^)(IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT)(?=\\s)|((?<=\\s)P)"
+            "match": "(?<=[\\s]|^)(IF|ELSE|ENDIF|(GOTO[BF]?)|WHILE|ENDWHILE|FOR|TO|ENDFOR|LOOP|ENDLOOP|STOPRE|REPEAT)(?=\\s)|((?<=\\s)P(?=[\\=\\d]))"
             "name": "keyword.control.sinumerik"
           }
           {
@@ -146,6 +146,10 @@
             "name": "sinumerik_axis"
           }
           {
+            "match": "(?<=[\\s]|^)[XYZWVUABC](?=\\=\\-?)"
+            "name": "sinumerik_axis"
+          }
+          {
             "match": "(?<=[\\s]|^)[XYZWVUABC](?=\\=\\w+)"
             "name": "sinumerik_axis"
           }
@@ -167,7 +171,7 @@
             "name": "sinumerik_ac_ic"
           }
           {
-            "match": "AP|AR|RP|CR(?=\\=)"
+            "match": "(AP|AR|RP|CR)(?=\\=)"
             "name": "sinumerik_circle_mod"
           }
           {
@@ -175,11 +179,11 @@
             "name": "sinumerik_line_mod"
           }
           {
-            "match": "(?<=[\\s]|^)[A]?(TRANS|MIRROR|SCALE|ROT)"
+            "match": "(?<=[\\s]|^)[A]?(TRANS(MIT)?|MIRROR|SCALE|ROT|TRACYL)"
             "name": "sinumerik_frame"
           }
           {
-            "match": "(?<=[\\s]|^)(SPCON\\(.\\)|SPCOF)"
+            "match": "(?<=[\\s]|^)(SPCON\\(.\\)|SPCOF|SETMS\\(.\\)|DIAMO[NF])"
             "name": "sinumerik_frame"
           }
 
@@ -187,7 +191,7 @@
        sinumerik_mark:
         patterns: [
           {
-            "match": "^[a-zA-Z_][a-zA-Z_][a-zA-Z_0-9]*(?=\\:)"
+            "match": "(?<=^|[\\s])[a-zA-Z_][a-zA-Z_][a-zA-Z_0-9]*(?=\\:)"
             "name": "sinumerik_mark"
           }
           {
