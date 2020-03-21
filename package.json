@@ -3,8 +3,7 @@
   "main": "./lib/sinumerik",
   "version": "0.0.5",
   "description": "Sinumerik highlight",
-  "keywords": [
-  ],
+  "keywords": [],
   "activationCommands": {
     "atom-workspace": "sinumerik:toggle"
   },
@@ -14,5 +13,6 @@
     "atom": ">=1.0.0 <2.0.0"
   },
   "dependencies": {
+    "fs-extra": "^9.0.0"
   }
 }
