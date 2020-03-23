@@ -135,7 +135,7 @@
             "name": "sinumerik_feed"
           }
           {
-            "match": "(?<=[\\s]|^)(CFC|CFTCP|OFFN)"
+            "match": "(?<=[\\s]|^)(CFC|CFTCP|OFFN|KONT[TC])"
             "name": "sinumerik_feed"
           }
         ]
@@ -179,7 +179,7 @@
             "name": "sinumerik_line_mod"
           }
           {
-            "match": "(?<=[\\s]|^)[A]?(TRANS(MIT)?|MIRROR|SCALE|ROT|TRACYL)"
+            "match": "(?<=[\\s]|^)[A]?(TRANS(MIT)?|MIRROR|SCALE|ROT|TRACYL|TRAFOOF)"
             "name": "sinumerik_frame"
           }
           {
