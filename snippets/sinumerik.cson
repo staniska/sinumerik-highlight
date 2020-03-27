@@ -162,7 +162,32 @@
   'MSG':
     'prefix': 'MSG'
     'body': 'MSG("${1:}")'
-
+#SPCO[NF] SETMS
+  'SPCON':
+    'prefix': 'SPCON'
+    'body': 'SPCON(${1:})'
+  'SPCOF':
+    'prefix': 'SPCOF'
+    'body': 'SPCOF(${1:})'
+  'SETMS':
+    'prefix': 'SETMS'
+    'body': 'SETMS(${1:})'
+#TRANS TRANSMIT TRACYL TRAFOOF TAORI
+  'TRANS':
+    'prefix': 'TRANS'
+    'body': 'TRANS ${1:}'
+  'TRANSMIT':
+    'prefix': 'TRANSMIT'
+    'body': 'TRANSMIT ${1:}'
+  'TRACYL':
+    'prefix': 'TRACYL'
+    'body': 'TRACYL ${1:}'
+  'TRAFOOF':
+    'prefix': 'TRAFOOF'
+    'body': 'TRAFOOF ${1:}'
+  'TRAORI':
+    'prefix': 'TRAORI'
+    'body': 'TRAORI ${1:}'
 
 
 
