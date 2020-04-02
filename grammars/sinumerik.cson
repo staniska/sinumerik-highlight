@@ -14,6 +14,9 @@
       statements:
         patterns: [
           {
+            include: "#sinumerik_auto_comment"
+          }
+          {
             include: "#variables"
           }
           {
@@ -44,6 +47,23 @@
             include: "#sys_var"
           }
         ]
+
+      sinumerik_auto_comment:
+        patterns: [
+          {
+            "begin": ";This\\scomment\\sis\\sautomatically\\screated\\sby\\ssinumerik\\-highlight\\spackage"
+            "beginCaptures":
+              "0":
+                "name": "comment.sinumerik.auto_begin"
+            "end": ";End\\sof\\scomment\\screated\\sby\\ssinumerik\\-highlight\\spackage"
+            "endCaptures":
+              "0":
+                "name": "comment.sinumerik.auto_end"
+            "name": "comment.sinumerik.auto"
+          }
+        ]
+
+
       g_func:
         patterns: [
           {
@@ -222,5 +242,4 @@
               "name": "sinumerik_T"
             }
         ]
-
 }
