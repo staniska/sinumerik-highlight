@@ -2,6 +2,10 @@
 
 Siemens Sinumerik highlight.
 
+**Be sure to check the toolpath in a normal debugger, for example in the Sinutrain
+Package contain many errors. Infinite loop possible.
+Please write issues as accurately as possible, with a minimum G-code for clarification.**
+
 Press Ctrl + Alt + o to activate higlight and show right panel.
 Backlight colors are set tightly and were not checked in a dark theme.
 
@@ -12,7 +16,11 @@ Single line debug allows you to see an approximate tool path.
 Clicking on the graphic window allows you to control the view using the arrows as well as + (=) and - buttons
 
 Linear interpolation supported including Ang modifier.
-Circular interpolation programming is possible through the end point and center or radius CR (including arc > 180 degrees - CR < 0)
+Circular interpolation programming is possible through:
+  - the end point and center
+  - the end point and radius CR (including arc > 180 degrees - CR < 0)
+  - the end point and AR
+  - the center point and AR
 [A]TRANS & [A]ROT supported.
 Subroutines in the same directory as the program can be called along with the parameters.
 R-variables supported.
