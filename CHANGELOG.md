@@ -12,3 +12,7 @@ v0.0.13
     
 v0.0.14
     - clear console log :)
+    
+v0.0.15
+    - add third axis in circular intrpolation 
+    - TURN support
