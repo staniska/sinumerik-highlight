@@ -35,7 +35,6 @@ GOTO[BF] jumps supported<br>
 IF - ELSE - ENDIF  supported<br>
 
 **MCALL not supported;<br>
-G2/G3 with TURN or third Axis not supported;<br> 
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
 
 
