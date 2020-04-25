@@ -22,15 +22,15 @@ Circular interpolation programming is possible through:
   - the end point and AR
   - the center point and AR
 [A]TRANS & [A]ROT supported.
-Subroutines in the same directory as the program can be called along with the parameters.
-R-variables supported.
-Math SIN COS TAN ASIN ACOS ATAN2 POT SQRT TRUNC ROUND supported.
-User variables definition and call assignment.
+Subroutines in the same directory as the program can be called along with the parameters. <br>
+R-variables supported.<br>
+Math SIN COS TAN ASIN ACOS ATAN2 POT SQRT TRUNC ROUND supported.<br>
+User variables definition and call assignment.<br>
+GOTO[BF] jumps supported<br>
+IF - ELSE - ENDIF  supported<br>
 
-**IF - GOTO[BF] jumps supported, but IF - ELSE - ENDIF  not supported yet**
-
-**MCALL not supported;
-G2/G3 with TURN or third Axis not supported; 
+**MCALL not supported;<br>
+G2/G3 with TURN or third Axis not supported;<br> 
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
 
 
