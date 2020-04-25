@@ -9,3 +9,6 @@ v0.0.12
 v0.0.13
     - add support polar coordinates (AP, RP, G110-G112)
     - DIAMON/DIAMOF interpreter
+    
+v0.0.14
+    - clear console log :)
