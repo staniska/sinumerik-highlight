@@ -1,5 +1,7 @@
 {
   "atom-workspace": {
-    "ctrl-alt-o": "sinumerik:toggle"
+    "ctrl-alt-o": "sinumerik:toggle",
+    "ctrl-alt-;": "sinumerik:comment",
+    "ctrl-alt-ж": "sinumerik:comment"
   }
 }
