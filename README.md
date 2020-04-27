@@ -37,6 +37,7 @@ IF - ELSE - ENDIF  supported<br>
 **MCALL not supported;<br>
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
 
+"Ctrl + Alt + ;" - comment selected lines;
 
 
 ![A screenshot of your package](images/Screenshot_1.png)
