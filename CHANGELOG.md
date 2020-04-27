@@ -16,3 +16,7 @@ v0.0.14
 v0.0.16
     - add third axis in circular intrpolation 
     - TURN support
+    
+V0.0.17
+    - 'comment selected lines' function added
+    - RND support
