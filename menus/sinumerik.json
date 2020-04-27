@@ -4,7 +4,12 @@
       {
         "label": "Toggle sinumerik",
         "command": "sinumerik:toggle"
+      },
+      {
+        "label": "Comment selected",
+        "command": "sinumerik:comment"
       }
+
     ]
   },
   "menu": [
@@ -12,11 +17,15 @@
       "label": "Packages",
       "submenu": [
         {
-          "label": "Sinumerik",
+          "label": "Sinumerik-highlight",
           "submenu": [
             {
               "label": "Toggle",
               "command": "sinumerik:toggle"
+            },
+            {
+              "label": "Comment selected",
+              "command": "sinumerik:comment"
             }
           ]
         }
