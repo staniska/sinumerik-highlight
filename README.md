@@ -25,6 +25,7 @@ Circular interpolation programming is possible through:
   - the center point and AR
   
 Polar coordinates (AP, RP) supported. <br>
+Rounding (RND) between lines supported <br>
 DIAMON / DIAMOF <br>
 [A]TRANS & [A]ROT supported. <br>
 Subroutines in the same directory as the program can be called along with the parameters. <br>
