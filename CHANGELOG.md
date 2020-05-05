@@ -20,3 +20,6 @@ v0.0.16<br>
 V0.0.17<br>
     - 'comment selected lines' function added (Ctrl + Alt + ;)<br>
     - RND support between lines<br>
+    
+V0.0.18<br>
+    - 1 RND bug fix<br>
