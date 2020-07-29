@@ -203,7 +203,7 @@
             "name": "sinumerik_frame"
           }
           {
-            "match": "(?<=[\\s]|^)(SPCON\\(.\\)|SPCOF\\(.\\)|SETMS\\(.\\)|DIAMO[NF])"
+            "match": "(?<=[\\s]|^)(SPCON\\(.\\)|SPCOF\\(.\\)|SETMS\\(.\\)|DIAMO[NF]|DIAM90)"
             "name": "sinumerik_frame"
           }
 
