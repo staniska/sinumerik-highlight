@@ -49,6 +49,16 @@
   'TC_DP':
     "prefix": 'TC_DP'
     "body": '\$TC_DP${1:1}[t,d]='
+#DIAMON settings
+  'DIAMON':
+    "prefix": 'DIAMON'
+    "body": 'DIAMON'
+  'DIAMOF':
+    "prefix": 'DIAMOF'
+    "body": 'DIAMOF'
+  'DIAM90':
+    "prefix": 'DIAM90'
+    "body": 'DIAM90'
 
 
 # Interpolation copmensation data
