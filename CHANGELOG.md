@@ -25,12 +25,19 @@ V0.0.18<br>
     - 1 RND bug fix<br>
     
 V0.0.19<br>
-    - ctrl - alt - r   : rewrite function
-    - REPEAT support added
-    - RND support between line & arc
-    - MAXVAL support
-    - Tool orientation: T101 - 109 accords to $TC_DP2 1 - 9
-    - Subroutines folder path selection area.
-    - IC moves parse for AP & RP operators
-    - DIAM90 mode for lathes
-    - CHR between lines parser
+    - ctrl - alt - r   : rewrite function<br>
+    - REPEAT support added<br>
+    - RND support between line & arc<br>
+    - MAXVAL support<br>
+    - Tool orientation: T101 - 109 accords to $TC_DP2 1 - 9<br>
+    - Subroutines folder path selection area.<br>
+    - IC moves parse for AP & RP operators<br>
+    - DIAM90 mode for lathes<br>
+    - CHR between lines parser<br>
+    
+V0.0.22<br>
+    - coordinate rulers<br>
+    - different colors for G40/41/42 lines<br>
+    - check conditions for float fix<br>
+    - call subroutine with math/R-vars<br>
+    - smooth rendering for debugging<br>
