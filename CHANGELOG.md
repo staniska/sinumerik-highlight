@@ -44,3 +44,7 @@ V0.0.22<br>
     
 V0.0.23<br>
     - fix subroutines path bug
+
+v0.0.24<br>
+    - fix float accuracy in comparisons<br>
+    - discarding a comment from string when parsing
