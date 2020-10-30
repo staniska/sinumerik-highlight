@@ -48,3 +48,9 @@ V0.0.23<br>
 v0.0.24<br>
     - fix float accuracy in comparisons<br>
     - discarding a comment from string when parsing
+   
+v0.0.25<br>
+    - display MSG in slow debug mode<br>
+    - fix subroutine call bug<br>
+    - string parse
+    - ROUND bug fix
