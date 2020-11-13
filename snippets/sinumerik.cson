@@ -199,5 +199,15 @@
     'prefix': 'TRAORI'
     'body': 'TRAORI ${1:}'
 
+#LIMS
+  'LIMS':
+    'prefix': 'LIMS'
+    'body': 'LIMS=${1:}'
+#ACC
+  'ACC':
+    'prefix': 'ACC'
+    'body': 'ACC[${1:ax_name}]'
+
+
 
 
