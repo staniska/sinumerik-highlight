@@ -1,7 +1,7 @@
 {
   "name": "sinumerik-highlight",
   "main": "./lib/sinumerik",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "description": "Sinumerik highlight",
   "keywords": [],
   "activationCommands": {
