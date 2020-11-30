@@ -57,3 +57,11 @@ v0.0.25<br>
     
 v0.0.26<br>
     - fix subroutines path dialog for Win<br>
+
+v0.0.28<br>
+    - parse variables in subroutine call<br>
+    - fix "<>" bug in condition parse<br>
+    - recursive subroutine call<br>
+    - fix float bug in conditions<br>
+    - fix 'OR' replacement<br>
+    - pasing STRING concatenation<br>
