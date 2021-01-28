@@ -65,3 +65,9 @@ v0.0.28<br>
     - fix float bug in conditions<br>
     - fix 'OR' replacement<br>
     - pasing STRING concatenation<br>
+
+v0.0.30<br>
+    - last element with "RND|CHR" drawing bug fixed<br>
+    - decrease timeout for short elements in SlowDebug
+    - fixed render queue in Slow Debug Mode
+    - ...
