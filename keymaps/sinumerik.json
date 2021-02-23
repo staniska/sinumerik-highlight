@@ -4,6 +4,7 @@
     "ctrl-alt-;": "sinumerik:comment",
     "ctrl-alt-ж": "sinumerik:comment",
     "ctrl-alt-r": "sinumerik:redraw",
-    "ctrl-alt-к": "sinumerik:redraw"
+    "ctrl-alt-к": "sinumerik:redraw",
+    "alt-space": "sinumerik:getSnippets"
   }
 }
