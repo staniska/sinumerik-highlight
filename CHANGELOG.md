@@ -1,73 +1,77 @@
-v0.0.8<br>
+#### v0.0.8
     - add circular interpolation with CR and AR
-<br><br>
-v0.0.12 <br>
-    - working in Windows restored (dir path bug fixed); <br>
-    - add support for IF - ELSE - ENDIF  jumps <br>
-    - add support for GOTO[BF] without IF jumps <br>
-    <br>
-v0.0.13<br>
-    - add support polar coordinates (AP, RP, G110-G112)<br>
-    - DIAMON/DIAMOF interpreter<br>
-    <br>
-v0.0.14<br>
-    - clear console log :)<br>
-    <br>
-v0.0.16<br>
-    - add third axis in circular intrpolation<br> 
-    - TURN support<br>
+
+#### v0.0.12
+    - working in Windows restored (dir path bug fixed).
+    - add support for IF - ELSE - ENDIF  jumps.
+    - add support for GOTO[BF] without IF jumps.
+
+#### v0.0.13
+    - add support polar coordinates (AP, RP, G110-G112).
+    - DIAMON/DIAMOF interpreter.
     
-V0.0.17<br>
-    - 'comment selected lines' function added (Ctrl + Alt + ;)<br>
-    - RND support between lines<br>
+#### v0.0.14
+    - clear console log :)
     
-V0.0.18<br>
-    - 1 RND bug fix<br>
+#### v0.0.16
+    - add third axis in circular intrpolation 
+    - TURN support
     
-V0.0.19<br>
-    - ctrl - alt - r   : rewrite function<br>
-    - REPEAT support added<br>
-    - RND support between line & arc<br>
-    - MAXVAL support<br>
-    - Tool orientation: T101 - 109 accords to $TC_DP2 1 - 9<br>
-    - Subroutines folder path selection area.<br>
-    - IC moves parse for AP & RP operators<br>
-    - DIAM90 mode for lathes<br>
-    - CHR between lines parser<br>
+#### v0.0.17
+    - 'comment selected lines' function added (Ctrl + Alt + ;)
+    - RND support between lines
     
-V0.0.22<br>
-    - coordinate rulers<br>
-    - different colors for G40/41/42 lines<br>
-    - check conditions for float fix<br>
-    - call subroutine with math/R-vars<br>
-    - smooth rendering for debugging<br>
+#### v0.0.18
+    - 1 RND bug fix
     
-V0.0.23<br>
+#### v0.0.19
+    - ctrl - alt - r   : rewrite function
+    - REPEAT support added
+    - RND support between line & arc
+    - MAXVAL support
+    - Tool orientation: T101 - 109 accords to $TC_DP2 1 - 9
+    - Subroutines folder path selection area.
+    - IC moves parse for AP & RP operators
+    - DIAM90 mode for lathes
+    - CHR between lines parser
+    
+#### v0.0.22
+    - coordinate rulers
+    - different colors for G40/41/42 lines
+    - check conditions for float fix
+    - call subroutine with math/R-vars
+    - smooth rendering for debugging
+    
+#### v0.0.23
     - fix subroutines path bug
 
-v0.0.24<br>
-    - fix float accuracy in comparisons<br>
+#### v0.0.24
+    - fix float accuracy in comparisons
     - discarding a comment from string when parsing
    
-v0.0.25<br>
-    - display MSG in slow debug mode<br>
-    - fix subroutine call bug<br>
-    - string parse<br>
-    - ROUND bug fix<br>
+#### v0.0.25
+    - display MSG in slow debug mode
+    - fix subroutine call bug
+    - string parse
+    - ROUND bug fix
+
+#### v0.0.26
+    - fix subroutines path dialog for Win
+
+#### v0.0.28
+    - parse variables in subroutine call
+    - fix "<>" bug in condition parse
+    - recursive subroutine call
+    - fix float bug in conditions
+    - fix 'OR' replacement
+    - pasing STRING concatenation
+
+#### v0.0.30
+    - last element with "RND|CHR" drawing bug fixed.
+    - decrease timeout for short elements in SlowDebug.
+    - fixed render queue in Slow Debug Mode.
     
-v0.0.26<br>
-    - fix subroutines path dialog for Win<br>
 
-v0.0.28<br>
-    - parse variables in subroutine call<br>
-    - fix "<>" bug in condition parse<br>
-    - recursive subroutine call<br>
-    - fix float bug in conditions<br>
-    - fix 'OR' replacement<br>
-    - pasing STRING concatenation<br>
-
-v0.0.30<br>
-    - last element with "RND|CHR" drawing bug fixed<br>
-    - decrease timeout for short elements in SlowDebug
-    - fixed render queue in Slow Debug Mode
-    - ...
+#### v0.0.32
+    - OFFN support
+    - individual snippets for machine tools
