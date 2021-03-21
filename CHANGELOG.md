@@ -75,3 +75,6 @@
 #### v0.0.32
     - OFFN support
     - individual snippets for machine tools
+
+#### v0.0.33
+    - display C axis as ROT
