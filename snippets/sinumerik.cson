@@ -208,6 +208,14 @@
     'prefix': 'ACC'
     'body': 'ACC[${1:ax_name}]'
 
+# tool data
+  'P_TOOLR':
+      'prefix': 'p_toolr'
+      'body': '$P_TOOLR'
+  'P_TOOLL':
+      'prefix': 'p_tooll'
+      'body': '$P_TOOLL'
+
 
 
 
