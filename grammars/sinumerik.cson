@@ -187,7 +187,7 @@
           }
           #Rotate direction
           {
-            "match": "(?<=\\=)ACN\\(|DCN\\(|DP\\("
+            "match": "(?<=\\=)ACN\\(|ACP\\(|DC\\("
             "name": "sinumerik_ac_ic"
           }
           {
