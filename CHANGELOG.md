@@ -78,3 +78,7 @@
 
 #### v0.0.33
     - display C axis as ROT
+
+#### v0.0.34
+    - blank & contour file path selector
+    - blank & contour filled figures
