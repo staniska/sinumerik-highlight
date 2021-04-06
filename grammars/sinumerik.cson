@@ -126,6 +126,11 @@
             "name": "keyword.control.sinumerik"
           }
           {
+            "match": "EXECSTRING"
+            "name":  "string.execstring.sinumerik"
+          }
+
+          {
             'begin': '"'
             'beginCaptures':
               '0':
@@ -135,17 +140,6 @@
               '0':
                 'name': 'punctuation.definition.string.end.sinumerik'
             'name': 'string.quoted.double.sinumerik'
-          }
-          {
-            "begin": "EXECSTRING\\("
-            "beginCaptures":
-              "0":
-                 "name": "punctuation.definition.execstring.begin.sinumerik"
-            "end": "\\)"
-            "endCaptures":
-              "0":
-                "name": "punctuation.definition.execstring.end.sinumerik"
-            "name": "string.execstring.sinumerik"
           }
         ]
        sinumerik_feed:
