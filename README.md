@@ -35,7 +35,7 @@ Circular interpolation programming is possible through:
 - Rounding (RND) between two lines or line and arc
 - Chamfer (only CHR) between lines
 - DIAMON / DIAMOF / DIAM90
-- [A]TRANS & [A]ROT
+- [A]TRANS & [A]ROT $ [A]MIRROR
 - Subroutines can be called from the same directory as the program and subroutine path of active machine with the parameters.
 - R-variables
 - G40/41/42 different colors
@@ -48,6 +48,8 @@ Circular interpolation programming is possible through:
 - GOTO[BF] jumps
 - IF - ELSE - ENDIF
 - REPEAT
+- WHILE - ENDWHILE
+- FOR TO  - ENDFOR
 
 **MCALL not supported yet.
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
