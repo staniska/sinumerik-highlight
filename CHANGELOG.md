@@ -82,3 +82,9 @@
 #### v0.0.34
     - blank & contour file path selector
     - blank & contour filled figures
+    - fix pole bug in DIAMON/DIAM90 mode
+    - EXECSTRING parse
+    - WHILE - ENDWILE support
+    - FOR - ENDFOR support only for R-vars
+    - [A]MIRROR support
+    - select containing folder for program file via teletype
