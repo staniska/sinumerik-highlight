@@ -50,6 +50,9 @@ Circular interpolation programming is possible through:
 - REPEAT
 - WHILE - ENDWHILE
 - FOR TO  - ENDFOR
+- string concatenation  
+- MSG(" ") 
+- EXECSTRING(" ")
 
 **MCALL not supported yet.
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
