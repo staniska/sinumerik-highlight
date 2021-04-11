@@ -88,3 +88,7 @@
     - FOR - ENDFOR support only for R-vars
     - [A]MIRROR support
     - select containing folder for program file via teletype
+
+#### v0.0.35
+    - $P_GG[29] - only for G group 29 (DIAMOF/DIAMON/DIAM90)
+    - fix some bugs
