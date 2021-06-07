@@ -92,3 +92,9 @@
 #### v0.0.35
     - $P_GG[29] - only for G group 29 (DIAMOF/DIAMON/DIAM90)
     - fix some bugs
+
+#### v0.0.36
+    - FOR-ENDFOR with named variable
+    - calculation of RP perfomed in WCS
+    - calculation of ANG with MIRROR in WCS
+    - Circle end point tolerance increased
