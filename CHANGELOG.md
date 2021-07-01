@@ -98,3 +98,6 @@
     - calculation of RP perfomed in WCS
     - calculation of ANG with MIRROR in WCS
     - Circle end point tolerance increased
+
+#### v0.0.37
+    - critical rounding bug fix
