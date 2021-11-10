@@ -1,9 +1,52 @@
+<!DOCTYPE html>
 <html lang="ru">
-    <head>
-        <meta content="text/html" charset="utf-8">
-        <title> Документация </title>
-    </head>
-    <body>
-        Hello world!
-    </body>
+<head>
+    <meta charset="utf-8" content="text/html">
+    <title> Документация </title>
+    <link rel="stylesheet" href="./styles/normalize.css">
+    <link rel="stylesheet" href="./styles/style.css">
+</head>
+<body class="page">
+<header class="header">
+    <h1 class="header__title">Sinumerik highlight</h1>
+    <h4 class="header__subtitle">Пакет для предварительной отладки sinumerik-кода в Atom</h4>
+</header>
+<main class="wrapper">
+    <div class="sidebar-container">
+        <aside class="sidebar">
+            <h3 class="sidebar__title"> Меню </h3>
+            <ul class="sidebar__menu">
+                <li class="sidebar__menu-item">
+                    Пункт 1
+                    <details class="sidebar__menu-details">
+                        <summary></summary>
+                        <ul>
+                            <li>ПП1</li>
+                            <li>ПП2</li>
+                        </ul>
+                    </details>
+                </li>
+                <li class="sidebar__menu-item">
+                    Пункт 2
+                </li>
+            </ul>
+        </aside>
+        <button class="sidebar-toggle__button sidebar-toggle__button_in-sidebar">Х</button>
+    </div>
+
+    <div class="content">
+        <div class="main-content">
+            <iframe src="https://api.github.com/repos/staniska/cnc-subroutines/contents/sinumerik/dmg_ctx_510_ecoline/CORNER.SPF">
+
+            </iframe>
+        </div>
+    </div>
+</main>
+<footer class="footer">
+    Это футор, детка!
+</footer>
+<script src="./scripts/sidebar__menu.js"></script>
+<script src="./scripts/sidebarToggleButton.js"></script>
+<script src="scripts/index.js"></script>
+</body>
 </html>
