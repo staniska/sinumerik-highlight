@@ -2,6 +2,7 @@
     fileTypes: [
       "mpf",
       "spf",
+      "def",
     ]
     scopeName: "source.sinumerik"
     name: "sinumerik"
