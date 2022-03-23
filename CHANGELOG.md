@@ -101,3 +101,11 @@
 
 #### v0.0.37
     - critical rounding bug fix
+
+#### v0.0.39
+    - MCALL support (1000 calls max)
+    - reduced errors num in the condition calculations
+    - fix G2/G3 (distance == 2 * CR) math error
+    - bug COS/ACOS SIN/ASIN fixed
+    - scale & offset in slow debug mode without canvas reset
+    - bolding selected rows on drawing

@@ -53,8 +53,8 @@ Circular interpolation programming is possible through:
 - string concatenation  
 - MSG(" ") 
 - EXECSTRING(" ")
+- MCALL (max 1000 calls)
 
-**MCALL not supported yet.
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
 
 
