@@ -109,3 +109,6 @@
     - bug COS/ACOS SIN/ASIN fixed
     - scale & offset in slow debug mode without canvas reset
     - bolding selected rows on drawing
+
+#### v0.0.41
+    - tool orientation (T10[1-9]) can be parsed from comment in previous line ex. ';T103'

@@ -43,6 +43,7 @@ Circular interpolation programming is possible through:
 - $AA_IW[axis]
 - $P_TOOLR equal 0
 - Tool orientation $TC_DP2 can be used for tools T101-T109, where the units place corresponds to orientation (there are help image in machine manager)
+- Tool orientation (T10[1-9]) can be parsed from comment in previous line ex. ';T103'
 - Math SIN COS TAN ASIN ACOS ATAN2 POT SQRT TRUNC ROUND
 - User variables definition and call assignment.
 - GOTO[BF] jumps

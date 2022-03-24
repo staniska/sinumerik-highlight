@@ -235,6 +235,10 @@
             {
               "match": "(?<=[\\s]|^)[TD]\\d+"
               "name": "sinumerik_T"
+            },
+            {
+              "match": "(?<=[\\s]|^)T(?=\\=)"
+              "name": "sinumerik_T"
             }
         ]
 }
