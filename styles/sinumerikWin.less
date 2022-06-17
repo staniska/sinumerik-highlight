@@ -1,10 +1,11 @@
 .sinumerikPanel {
   background-color: whitesmoke;
 }
-.sinumerikPanelHeadContainer{
+
+.sinumerikPanelHeadContainer {
   display: table;
   position: absolute;
-  top: 0px;
+  top: 0;
   z-index: 1;
 }
 
@@ -16,22 +17,26 @@
 .sinumerikPanelHead {
   display: table-cell;
 }
+
 .sinumerikPanelCentralContainer {
   display: table;
   position: absolute;
   top: 40px;
   border-collapse: collapse;
 }
+
 .sinumerikPanelMain {
   border: #eaeaeb 2px solid;
   display: table-cell;
   overflow: hidden;
 }
+
 .sinumerikPanelRight {
   border: #eaeaeb 2px solid;
   display: table-cell;
   height: 100%;
 }
+
 .sinumerikPanelFootContainer {
   display: table;
   position: absolute;
@@ -50,10 +55,10 @@
   width: 80px;
   transition-duration: 0.2s;
 }
+
 .sinumerikPanelHeadButton:hover {
   background-color: gainsboro;
 }
-
 
 
 .sinumerikPanelHeadButtonSelect {
@@ -77,20 +82,25 @@
   position: absolute;
 }
 
-
-
-.sinumerikCounturEditFoot {
+.sinumerikContourEditMain {
   position: absolute;
-  background-color: #ff8800;
-  width: 100px;
-  height: 100px;
+  top: 0;
+  left: 0;
+  width: 80%;
+  height: 100%;
 }
 
-.sinumerikCounturEditMain {
+.sinumerikContourEditRight {
   position: absolute;
-  background-color: #ff8800;
-  width: 100px;
-  height: 100px;
+  top: 0;
+  right: 0;
+  width: 20%;
+  height: 100%;
+  background-color: #eaeaeb;
+  border: gainsboro solid 2px;
+  border-left: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sinumerikFootButton {
@@ -102,19 +112,20 @@
   margin-left: 5px;
   margin-top: 6px;
 }
+
 .sinumerikFootButton:hover {
   background-color: gainsboro;
 }
 
 .sinumerikMachineManagerHead {
   font-weight: bold;
-  border-bottom:  #eaeaeb 2px solid;
+  border-bottom: #eaeaeb 2px solid;
   text-align: center;
   margin-bottom: 3px;
 }
 
 .sinumerikSelect {
-  border:  #eaeaeb 2px solid;
+  border: #eaeaeb 2px solid;
   text-align: center;
   margin: 3px;
 }
@@ -145,9 +156,11 @@
 .sinumerikButton:disabled {
   color: gainsboro;
 }
+
 .sinumerikButtonSelected {
   background-color: gainsboro;
 }
+
 .sinumerikButtonSelected:hover {
   background-color: darkgray;
 }
@@ -175,12 +188,15 @@
 .sinumerikLi {
 
 }
+
 .sinumerikLi:hover {
   background-color: gainsboro;
 }
+
 .sinumerikLiSelected {
   background-color: gainsboro;
 }
+
 .sinumerikLiSelected:hover {
   background-color: darkgray;
 }
@@ -207,8 +223,9 @@
 }
 
 .snipName {
-  font-weight: bold ;
+  font-weight: bold;
 }
+
 .comment {
   color: #057a7d;
   font-style: italic;
@@ -218,4 +235,315 @@
   background-color: white;
   font-weight: bold;
   font-size: 1.5em;
+}
+
+.contourEditCanvas {
+  height: 100%;
+  width: 100%;
+  background-color: white;
+  border: gainsboro solid 2px;
+}
+
+
+.contourEditPlaneButton {
+  background-color: #e7e7e7;
+  border: #b6b5b5 2px solid;
+  margin: 2px;
+}
+
+.contourEditPlaneButton:hover {
+  background-color: #b6b5b5;
+}
+
+
+.contourEditPlaneButtonSelected {
+  background-color: #888888;
+}
+
+.contourEditPlaneButtonSelected:hover {
+  background-color: #b6b5b5;
+}
+
+.contourEditContainer {
+  border: #b6b5b5 2px solid;
+  margin: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.contourEditContainerHeader {
+  background-color: #e7e7e7;
+  border-bottom: #b6b5b5 2px solid;
+  font-weight: bold;
+  text-align: center;
+  width: 100%;
+}
+
+.contourEditContainerHeader:hover {
+  background-color: #cccccc;
+}
+
+.d_none {
+  display: none
+}
+
+.contourEditButton {
+  background-color: #e7e7e7;
+  border: #b6b5b5 2px solid;
+  border-radius: 5px;
+  margin: 7px 3px 4px;
+}
+
+.contourEditButton:disabled {
+  color: #b6b5b5;
+  text-shadow: 0 0 2px #b6b5b5;
+}
+
+.contourEditButton:hover:not(:disabled):not(:active) {
+  box-shadow: 2px 2px 3px black;
+}
+
+.contourEditButton:active {
+  box-shadow: inset 1px 1px 2px black;
+}
+
+.contourEditInput {
+  margin: 5px auto;
+  padding-top: 5px;
+  position: relative;
+}
+
+.btn_selected {
+  box-shadow: 1px 1px 2px black;
+  border: #565656 2px solid;
+}
+
+.contourEditRadio {
+  display: none;
+}
+
+.contourEditRadioLabel {
+  margin: 5px;
+  display: inline-block;
+  cursor: pointer;
+  padding: 2px 5px;
+  border: #565656 2px solid;
+  border-radius: 5px;
+  user-select: none;
+}
+
+.contourEditRadioLabel:hover {
+  box-shadow: 1px 1px 2px black;
+}
+
+.contourEditRadio:checked + label {
+  background-color: #b6b5b5;
+}
+
+.contourEditPrecision {
+  margin-top: 5px;
+  padding: 5px 0;
+  position: relative;
+}
+
+.contourEditPrecision::before {
+  display: block;
+  width: 90%;
+  content: '';
+  position: absolute;
+  border-bottom: 1px solid #b6b5b5;
+  top: 0;
+  right: 5%;
+}
+
+.contourEditPrecision::after {
+  display: block;
+  width: 90%;
+  content: '';
+  position: absolute;
+  border-bottom: 1px solid #b6b5b5;
+  bottom: 0;
+  right: 5%;
+}
+
+.contourEditViewTools {
+  margin-top: auto;
+}
+
+.editContour_elementsOl {
+  margin-top: 5px;
+  position: relative;
+  flex-direction: column;
+  width: 100%;
+  padding: 5px 0 0;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.editContour_elementsOl:not(.d_none) {
+  display: flex;
+}
+
+.editContour_elementsOl::before {
+  display: block;
+  width: 90%;
+  content: '';
+  position: absolute;
+  border-bottom: 1px solid #b6b5b5;
+  top: 0;
+  right: 5%;
+}
+
+.contourEditButton_small {
+  height: 20px;
+  padding: 0 2px 18px;
+  margin: 1px 3px 1px auto;
+}
+
+.editContourElement {
+  display: flex;
+}
+
+.editContourElement_selected {
+  background-color: #cccccc;
+  border: #b6b5b5 2px solid;
+}
+
+.editContourElement_highlight {
+  background-color: #cccccc;
+}
+
+.editContourElement_text {
+  margin: auto 3px;
+}
+
+.editContourElement_num {
+  margin: auto 3px;
+}
+
+.contourEditElementProperties {
+  width: fit-content;
+  margin: 5px;
+  border: #b6b5b5 2px solid;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+}
+
+.contourEditElementProperties_header {
+  background-color: #e7e7e7;
+  border-bottom: #b6b5b5 2px solid;
+  font-weight: bold;
+  text-align: center;
+  width: 100%;
+}
+
+.contourEditElementProperties_details {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+}
+
+.contourEditElementProperties_id {
+  font-weight: bold;
+  margin: 3px 5px;
+}
+
+.contourEditElementProperties_type {
+  font-weight: bold;
+  margin: 3px 5px;
+}
+
+.contourEditElementProperties_id::after {
+  content: ':';
+}
+
+
+.sinumerikContourEditFoot {
+  height: ~"calc(100% - 10px)";
+}
+
+.contourEditElementProperties_coord {
+  display: flex;
+  margin-left: 10px;
+  align-items: center;
+}
+
+.contourEditElementProperties_coordValue {
+  width: 7em;
+  margin-left: 3px;
+}
+
+.contourEditElementProperties_coords {
+  display: flex;
+}
+
+.contourEditElementProperties_point {
+  display: flex;
+  margin: 2px 5px;
+  align-items: center;
+}
+
+.contourEditElementProperties_pointHeader {
+  font-weight: bold;
+  margin: auto;
+}
+
+.contourEditElementProperties_pointHeader::after {
+  content: ':'
+}
+
+.contourEditElementProperties_angle {
+  display: flex;
+  align-items: center;
+}
+
+.contourEditElementProperties_angleHeader {
+  margin: 0 32px 0 5px;
+}
+
+.contourEditElementProperties_angleFix {
+  height: 23px;
+  width: 31px;
+}
+
+.contourEditElementProperties_angleFix:hover {
+  background-color: #cccccc;
+}
+
+.contourEditElementProperties_angleFix__checked {
+  box-shadow: inset 2px 2px 2px #b6b5b5;
+  border-width: 1px;
+  padding: 3px 0 0 3px;
+}
+
+.editContour_contoursOl {
+  margin: 5px;
+  position: relative;
+  flex-direction: column;
+  width: 100%;
+  padding: 5px 0 0;
+  max-height: 250px;
+  overflow: auto;
+}
+
+.editContour_contoursOl:not(.d_none) {
+  display: flex;
+}
+
+.editContour_contoursLi {
+  margin: 0 5px 0 20px;
+  padding-left: 5px;
+}
+
+.editContour_contoursLi:hover {
+  background-color: #cccccc;
+}
+
+.editContour_contoursLi__selected {
+  background-color: #cccccc;
+  border: #b6b5b5 2px solid;
 }
