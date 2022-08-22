@@ -272,6 +272,14 @@
   align-items: center;
 }
 
+.contourEditContainer_visible {
+  border: #b6b5b5 2px solid;
+  margin: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .contourEditContainerHeader {
   background-color: #e7e7e7;
   border-bottom: #b6b5b5 2px solid;
@@ -569,11 +577,66 @@
 
 .contourEdit_modalWindow {
   border: #b6b5b5 1px solid;
-  height: 100px;
+  padding: 10px;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .contourEdit_modalWindowHeader {
   background-color: #e7e7e7;
   font-weight: bold
 }
+
+.contourEdit_modalWindowDirections {
+  display: flex;
+  justify-content: center;
+}
+
+.contourEdit_modalWindow_Direction {
+  height: 50px;
+  width: 50px;
+}
+
+.contourEdit_modalWindow_Close {
+  height: 20px;
+  width: 50px;
+}
+
+.contourEdit_modalWindow_Button {
+  margin: 10px;
+  border: #b6b5b5 2px solid;
+  border-radius: 5px;
+}
+
+.contourEdit_modalWindow_Button:hover {
+  box-shadow: 1px 1px 1px #565656;
+}
+
+.contourEdit_modalWindow_Button:active {
+  box-shadow: inset 1px 1px 1px #565656;
+}
+
+.contourEditContainer_contoursHeader {
+  margin-top: 5px;
+  font-weight: bold;
+  width: 90%;
+  text-align: center;
+  border-bottom: #b6b5b5 2px solid;
+  border-top: #b6b5b5 2px solid;
+}
+
+.contourEditContainer_contoursHeader:hover {
+  background-color: #d0cfcf;
+}
+
+.contourEditContainer_contours:not(.d_none) {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+
