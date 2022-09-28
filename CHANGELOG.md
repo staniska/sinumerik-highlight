@@ -113,3 +113,4 @@
 #### v0.0.41
     - tool orientation (T10[1-9]) can be parsed from comment in previous line ex. ';T103'
     - cnc type selector for sinumerik-to-nc pack
+    - contour edit tools
