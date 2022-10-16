@@ -1,8 +1,8 @@
 {
-  "name": "sinumerik-highlight",
+  "name": "sinumerik-debugger",
   "main": "./lib/sinumerik",
   "version": "0.1.0",
-  "description": "Sinumerik highlight",
+  "description": "Sinumerik code highlighting & debugging",
   "keywords": [],
   "activationCommands": {
     "atom-workspace": "sinumerik:toggle"
