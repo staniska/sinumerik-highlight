@@ -1,5 +1,5 @@
 {
-  "name": "sinumerik-debugger",
+  "name": "sinumerik-highlight",
   "main": "./lib/sinumerik",
   "version": "0.1.0",
   "description": "Sinumerik code highlighting & debugging",
