@@ -4,9 +4,6 @@
   "version": "0.2.0",
   "description": "Sinumerik code highlighting & debugging",
   "keywords": [],
-  "activationCommands": {
-    "atom-workspace": "sinumerik:toggle"
-  },
   "repository": "https://github.com/staniska/sinumerik-highlight",
   "license": "MIT",
   "engines": {
