@@ -10,7 +10,7 @@
   "repository": "https://github.com/staniska/sinumerik-highlight",
   "license": "MIT",
   "engines": {
-    "atom": ">=1.0.0 <2.0.0"
+    "pulsar": ">=1.0.0 <2.0.0"
   },
   "dependencies": {
     "fs-extra": "^9.0.0"
