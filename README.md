@@ -8,17 +8,17 @@
 **Please write issues as accurately as possible, with a minimum G-code for clarification.**
 
 ***
-**Important! Before update package save ~.atom/packages/sinumerik-highlight/userData/ contents.**
+**Important! Before update package save ~.pulsar/packages/sinumerik-highlight/userData/ contents.**
 
 ***
-Press Ctrl + Alt + o to activate higlight and show right panel.
+Press Ctrl + Alt + o to activate highlight and show right panel.
 Backlight colors are set tightly and were not checked in a dark theme.
 
 You can select Lathe or mill type in Machine manager. The selected type affects the DIAMON settings (for lather) and the main plane (G17 for mill and G18 for lathe).
-Subroutine folder path can be installed for every machine
+Subroutine folder path can be installed for every machine. CNC type can be selected for translation Sinumerik code to others CNC's using "sinumerik-to-nc" package (beta testing state).
 
 Paths to corresponding snippets can be defined for each machine. 
-See the snippet syntax on https://github.com/staniska/cnc-subroutines/tree/master/snippets/DMG_CTX510. Navigation through the snippets 
+See the snippet syntax on https://github.com/staniska/cnc-subroutines/tree/master/snippets/DMG_CTX510. " Alt + Spacebar" - open snippets menu. Navigation through the snippets 
 menu items is carried out using the arrows keys. 
 
 Single line debug allows you to see an approximate tool path.
