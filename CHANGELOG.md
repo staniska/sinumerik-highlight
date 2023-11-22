@@ -117,3 +117,9 @@
 
 #### v0.0.43
     - fix contours saving func for windows
+
+#### v0.0.44 - v0.3.5
+    - many features inc. Contour tools for roughing 
+
+#### v0.3.6
+    - add 3D toolpath wiev
