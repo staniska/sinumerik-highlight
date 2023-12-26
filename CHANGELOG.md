@@ -123,3 +123,8 @@
 
 #### v0.3.6
     - add 3D toolpath wiev
+
+#### v0.3.7
+    - display contours for all programs in directory
+    - add closed contour turning cycle
+    - fix turning cycle direction selector
