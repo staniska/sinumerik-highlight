@@ -128,3 +128,6 @@
     - display contours for all programs in directory
     - add closed contour turning cycle
     - fix turning cycle direction selector
+
+#### v0.3.8
+    - fix turning cycle safety distance
