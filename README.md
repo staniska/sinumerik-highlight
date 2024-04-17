@@ -21,13 +21,20 @@ Paths to corresponding snippets can be defined for each machine.
 See the snippet syntax on https://github.com/staniska/cnc-subroutines/tree/master/snippets/DMG_CTX510. " Alt + Spacebar" - open snippets menu. Navigation through the snippets 
 menu items is carried out using the arrows keys. 
 
-Single line debug allows you to see an approximate tool path.
+Single line debugger allows you to see an approximate tool path.
 Parsing errors can be seen by clicking on the button "Details".
 Clicking on the graphic window allows you to control the view using the arrows as well as + (=) and - buttons.
 Scroll and drag works too
 
 Blank & part contours can be programmed with G-code path & drawed on SingleLineDebug canvas
 Default names: BLANK.MPF & CONTOUR.MPF
+
+3D viewport of Single line debugger displays toolpath in perspective mode.
+Slow debug not supported in 3D mode yet. Mouse contols:
+- LMB - rotate view
+- Wheel - zoom
+- Shift + LMB - pan view
+- Ctrl - decrease rotate / pan / zoom speed
 
 The ContourEdit panel can help create roughing cycles ,
 but it is still being tested. The contour must be closed.
@@ -69,9 +76,9 @@ Circular interpolation programming is possible through:
 - REPEAT
 - WHILE - ENDWHILE
 - FOR TO  - ENDFOR
-- string concatenation  
 - MSG(" ") 
 - EXECSTRING(" ")
+- string concatenation (<<) works correctly for strings without spaces; only for EXECSTRING there are no such restrictions
 - MCALL (max 1000 calls)
 
 SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
