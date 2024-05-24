@@ -1,7 +1,7 @@
 {
   "name": "sinumerik-highlight",
   "main": "./lib/sinumerik",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "Sinumerik code highlighting and debugging",
   "repository": "https://github.com/staniska/sinumerik-highlight",
   "license": "MIT",
