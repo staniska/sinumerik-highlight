@@ -131,3 +131,11 @@
 
 #### v0.3.8
     - fix turning cycle safety distance
+
+#### v0.3.11
+    - fix some change editor errors
+    - add optons for FANUC toolchange
+    - 3D viewport redraw with ctrl-alt-r, fix zoom/pan/rotate bug
+    - Abort parsing when NaN is received
+    - fix ENDWHILE searching
+    - fix area selection bug
