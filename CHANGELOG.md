@@ -139,3 +139,8 @@
     - Abort parsing when NaN is received
     - fix ENDWHILE searching
     - fix area selection bug
+
+#### v0.3.12
+    - fix G33 interpretation error in MIRROR mode
+    - add machining time calculation
+    - save viewport position & scale for every file in SLD & ContourEditModes
