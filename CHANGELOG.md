@@ -144,3 +144,8 @@
     - fix G33 interpretation error in MIRROR mode
     - add machining time calculation
     - save viewport position & scale for every file in SLD & ContourEditModes
+
+#### v0.3.15
+    - add support for user .DEF files placed in subroutine folder
+    - increase selectArea function speed
+    - add loading contour from blank & contour files

@@ -58,6 +58,8 @@ Circular interpolation programming is possible through:
 - [A]TRANS & [A]ROT $ [A]MIRROR
 - Subroutines can be called from the same directory as the program and subroutine path of active machine with the parameters.
 - R-variables
+- User variables definition and call assignment.
+- User variables from a .DEF file placed in the subroutine folder are supported (REAL, INT and STING types). CHAN is ignored.
 - G40/41/42 different colors
 - OFFN
 - $AA_IW[axis]
@@ -70,7 +72,6 @@ Circular interpolation programming is possible through:
 - Calc lathe tool compensation function decrease approach/departure paths for G41/42 without taking into tangent point. 
   Programmed path not tool center point renders. Use with caution
 - Math SIN COS TAN ASIN ACOS ATAN2 POT SQRT TRUNC ROUND
-- User variables definition and call assignment.
 - GOTO[BF] jumps
 - IF - ELSE - ENDIF
 - REPEAT
