@@ -149,3 +149,9 @@
     - add support for user .DEF files placed in subroutine folder
     - increase selectArea function speed
     - add loading contour from blank & contour files
+
+#### v0.3.16
+    - added contour elements loading from contour & blank files
+    - short elements highlighting in contour edit list
+    - added area contour saving to file feature
+    - added selecting element by mouse feature
