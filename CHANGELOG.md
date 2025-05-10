@@ -155,3 +155,6 @@
     - short elements highlighting in contour edit list
     - added area contour saving to file feature
     - added selecting element by mouse feature
+
+#### v0.3.17
+    - added divide line by other line feature in contourEdit mode
