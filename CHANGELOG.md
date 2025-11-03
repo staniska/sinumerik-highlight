@@ -158,3 +158,6 @@
 
 #### v0.3.17
     - added divide line by other line feature in contourEdit mode
+
+#### v0.3.19
+    - add progressBar for slow forward & backward debugging
