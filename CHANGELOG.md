@@ -161,3 +161,6 @@
 
 #### v0.3.19
     - add progressBar for slow forward & backward debugging
+
+#### v0.3.20
+    - optimize lathes C axis debugging 
