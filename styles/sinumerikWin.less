@@ -1046,3 +1046,25 @@
   right: 0;
   top: 4px;
 }
+
+// Tab visibility — all tab containers hidden by default, shown via data-active-tab
+.sinumerikSLDFootContainer,
+.sinumerikSingleLineDebugMain,
+.sinumerikMachineManagerFoot,
+.sinumerikMachineManagerMain,
+.sinumerikMachineManagerRightContainer,
+.toolContainer,
+.sinumerikContourEditFoot,
+.sinumerikContourEditMain,
+.sinumerikContourEditRight {
+  visibility: hidden;
+}
+[data-active-tab="singleLine"] .sinumerikSLDFootContainer,
+[data-active-tab="singleLine"] .sinumerikSingleLineDebugMain { visibility: visible; }
+[data-active-tab="contourEdit"] .sinumerikContourEditFoot,
+[data-active-tab="contourEdit"] .sinumerikContourEditMain,
+[data-active-tab="contourEdit"] .sinumerikContourEditRight { visibility: visible; }
+[data-active-tab="machineManager"] .sinumerikMachineManagerFoot,
+[data-active-tab="machineManager"] .sinumerikMachineManagerMain,
+[data-active-tab="machineManager"] .sinumerikMachineManagerRightContainer,
+[data-active-tab="machineManager"] .toolContainer { visibility: visible; }
