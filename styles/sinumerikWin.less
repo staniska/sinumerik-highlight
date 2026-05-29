@@ -1,5 +1,9 @@
 .sinumerikPanel {
+  --panel-width: 0px;
+  --panel-height: 0px;
   background-color: whitesmoke;
+  width: var(--panel-width);
+  height: var(--panel-height);
 }
 
 .resize {
@@ -27,6 +31,8 @@
 
 .sinumerikPanelHead {
   display: flex;
+  width: var(--panel-width);
+  height: 40px;
 }
 
 .sinumerikPanelCentralContainer {
@@ -40,12 +46,16 @@
   border: #eaeaeb 2px solid;
   display: table-cell;
   overflow: hidden;
+  width: calc(var(--panel-width) * 0.7);
+  height: calc((var(--panel-height) - 40px) * 0.8);
+  max-height: calc((var(--panel-height) - 40px) * 0.8);
 }
 
 .sinumerikPanelRight {
   border: #eaeaeb 2px solid;
   display: table-cell;
-  height: 100%;
+  width: calc(var(--panel-width) * 0.3);
+  height: calc((var(--panel-height) - 40px) * 0.8);
 }
 
 .sinumerikPanelFootContainer {
@@ -56,6 +66,8 @@
 
 .sinumerikPanelFoot {
   display: table-cell;
+  width: var(--panel-width);
+  height: calc((var(--panel-height) - 40px) * 0.2);
 }
 
 .sinumerikPanelHeadButton {
@@ -759,10 +771,12 @@
 .sinumerikRightButtons {
   vertical-align: bottom;
   height: 25px;
+  width: 30px;
 }
 
 .sinumerikMachineSearchInput {
   height: 25px;
+  width: calc(var(--panel-width) * 0.3 - 65px);
 }
 
 // progressBar.js
