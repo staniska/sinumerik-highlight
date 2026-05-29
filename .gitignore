@@ -4,3 +4,4 @@ node_modules
 /.idea/
 #.gitignore
 /userData/
+CLAUDE.md

@@ -749,3 +749,300 @@
 .progressBar_Active {
   box-shadow: 0 0 4px 3px darkcyan;
 }
+
+// sinumerik-view.js
+.sinumerikButton--savePanelWidth {
+  margin-left: auto;
+  border-radius: 10px;
+}
+
+.sinumerikRightButtons {
+  vertical-align: bottom;
+  height: 25px;
+}
+
+.sinumerikMachineSearchInput {
+  height: 25px;
+}
+
+// progressBar.js
+.sinumerikProgressLine {
+  flex-grow: 1;
+  margin: 5px;
+  height: 15px;
+}
+
+// msg_div.js
+.sinumerikMsgDiv {
+  position: absolute;
+  left: 20px;
+  top: 10px;
+  background: white;
+  border: 1px solid blue;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.sinumerikMsgHead {
+  float: left;
+  margin-right: 10px;
+}
+
+.sinumerikMsgBody {
+  float: left;
+}
+
+.sinumerikMsgClose {
+  float: right;
+  font-size: 12px;
+}
+
+// fanuc-options.js
+.sinumerikOptionRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sinumerikOptionCheckbox {
+  margin: 0;
+}
+
+// single-line-debug.js: foot divs
+.sinumerikSLDFootDiv {
+  float: left;
+}
+
+.sinumerikSLDFootDivRight {
+  float: right;
+}
+
+// single-line-debug.js: parse string bar
+.sinumerikSLDParseStringDiv {
+  margin: 0;
+  background-color: white;
+  display: flex;
+  align-items: center;
+}
+
+.sinumerikSLDStringDiv {
+  line-height: 35px;
+  vertical-align: middle;
+  flex-grow: 1;
+}
+
+.sinumerikSLDButtonRight {
+  float: right;
+}
+
+.sinumerikSLDDetailsDiv {
+  background-color: GhostWhite;
+}
+
+// single-line-debug.js: info / controls div
+.sinumerikSLDMachineName {
+  font-weight: bold;
+}
+
+.sinumerikSLDCheckDiv {
+  height: 37px;
+}
+
+.sinumerikSLDCheckDivFlex {
+  display: flex;
+  height: 37px;
+}
+
+.sinumerikSLDCheckbox {
+  height: 25px;
+  width: 25px;
+  float: left;
+}
+
+.sinumerikSLDSelect {
+  height: 25px;
+  margin-top: 4px;
+}
+
+.sinumerikSLDAutoLabel {
+  margin: auto;
+}
+
+.sinumerikSLDPauseDiv {
+  height: 37px;
+}
+
+.sinumerikSLDPauseButton {
+  width: 90%;
+  margin-left: 5%;
+}
+
+// single-line-debug.js: G40/G41/G42 legend
+.sinumerikSLDHelpDiv {
+  display: flex;
+  flex-direction: column;
+}
+
+.sinumerikSLDHelpText {
+  float: left;
+}
+
+.sinumerikSLDColorLine {
+  height: 3px;
+  width: 22px;
+  float: right;
+  margin-top: 6px;
+  margin-left: 10px;
+}
+
+.sinumerikSLDColorLine--g40 { background: green; }
+.sinumerikSLDColorLine--g41 { background: greenyellow; }
+.sinumerikSLDColorLine--g42 { background: springgreen; }
+
+.sinumerikSLDCompMath {
+  border: 1px solid #F62217;
+}
+
+.sinumerikSLDCompMathText {
+  width: 100px;
+}
+
+.sinumerikSLDInlineLabel {
+  float: left;
+  margin: 5px;
+}
+
+.sinumerikSLDSmallCheckbox {
+  height: 20px;
+  width: 20px;
+  margin-right: 5px;
+}
+
+// single-line-debug.js: blank/contour input rows
+.sinumerikSLDFieldLabel {
+  float: left;
+  margin: 10px 10px 0 5px;
+}
+
+.sinumerikSLDFieldInput {
+  width: 12em;
+}
+
+.sinumerikSLDRowFlex {
+  display: flex;
+}
+
+.sinumerikSLDCenteredCheckbox {
+  height: 20px;
+  width: 20px;
+  margin: 0;
+  align-self: center;
+}
+
+// single-line-debug.js: error div
+.sinumerikSLDErrorDiv {
+  color: firebrick;
+  font-weight: bold;
+}
+
+// machine-manager.js: subroutine/snippet list item label
+.sinumerikMachineTextDiv {
+  float: left;
+  margin-top: 10px;
+}
+
+// machine-manager.js: tool position elements (3x3 grid)
+.sinumerikToolElement {
+  float: left;
+  border: #eaeaeb 1px solid;
+  position: relative;
+}
+
+.sinumerikToolElementBack {
+  position: absolute;
+  background-size: 60%;
+  opacity: 0.2;
+  background-repeat: no-repeat;
+}
+
+.sinumerikToolElementFront {
+  position: absolute;
+  font-weight: bolder;
+  z-index: 3;
+  text-align: center;
+}
+
+// machine-manager.js: "file not found" notice
+.sinumerikCreateFileInfo {
+  font-weight: bold;
+  margin-top: 10px;
+  color: firebrick;
+}
+
+.sinumerikCreateFileButton {
+  color: #2E2E2E;
+}
+
+// machine-manager.js: fanuc options panel
+.sinumerikFanucOptions {
+  flex-direction: column;
+}
+
+// machine-manager.js: inputs in create machine dialog
+.sinumerikMachineInput {
+  height: 25px;
+}
+
+.sinumerikNameInputWrapper {
+  position: relative;
+}
+
+// time.js
+.sinumerikTimeDiv {
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sinumerikTimeInput {
+  width: 6em;
+  color: green;
+}
+
+.sinumerikRapidTimeDiv {
+  color: red;
+}
+
+// snippets.js: popup menu shared style
+.sinumerikSnippetsMenu {
+  background-color: #eaeaeb;
+  border: 1px solid dimgray;
+}
+
+.sinumerikSnippetsInputIcon {
+  float: left;
+}
+
+.sinumerikSnippetsOl {
+  list-style: none;
+}
+
+.sinumerikSnippetVarName {
+  float: left;
+}
+
+.sinumerikSnippetVarInput {
+  margin-left: 1em;
+}
+
+// contourEdit/tools/fs.js: folder list icon
+.editContour_foldersLi {
+  position: relative;
+}
+
+.editContour_foldersLiIcon {
+  position: absolute;
+  right: 0;
+  top: 4px;
+}
