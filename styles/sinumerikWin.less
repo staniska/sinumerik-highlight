@@ -45,6 +45,7 @@
 
 .sinumerikPanelMain {
   border: #eaeaeb 2px solid;
+  box-sizing: border-box;
   display: table-cell;
   overflow: hidden;
   width: calc(var(--panel-width) * 0.7);
@@ -54,6 +55,7 @@
 
 .sinumerikPanelRight {
   border: #eaeaeb 2px solid;
+  box-sizing: border-box;
   display: table-cell;
   width: calc(var(--panel-width) * 0.3);
   height: calc((var(--panel-height) - 40px) * 0.8);
@@ -69,6 +71,7 @@
   display: table-cell;
   width: var(--panel-width);
   height: calc((var(--panel-height) - 40px) * 0.2);
+  overflow: hidden;
 }
 
 .sinumerikPanelHeadButton {
@@ -100,11 +103,23 @@
 
 .sinumerikSingleLineDebugFoot {
   display: flex;
-  position: absolute;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .sinumerikSingleLineDebugMain {
   position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: dimgray solid 2px;
+  box-sizing: border-box;
+}
+
+.sinumerikSingleLineDebugMain .sinumerikCanvas {
+  border: none;
 }
 
 .sinumerikContourEditMain {
@@ -826,19 +841,24 @@
 
 // single-line-debug.js: foot divs
 .sinumerikSLDFootDiv {
-  float: left;
+  flex-shrink: 0;
 }
 
 .sinumerikSLDFootDivRight {
-  float: right;
+  margin-left: auto;
 }
 
 // single-line-debug.js: parse string bar
 .sinumerikSLDParseStringDiv {
   margin: 0;
-  background-color: white;
   display: flex;
   align-items: center;
+  flex-basis: 100%;
+}
+
+.sinumerikSLDParseStringDiv .sinumerikButton {
+  background-color: unset;
+  border: 1px solid gainsboro;
 }
 
 .sinumerikSLDStringDiv {
@@ -1067,23 +1087,24 @@
 }
 
 // Tab visibility — all tab containers hidden by default, shown via data-active-tab
+// Footer containers: display:none (in-flow, must not take up space when inactive)
 .sinumerikSLDFootContainer,
-.sinumerikSingleLineDebugMain,
 .sinumerikMachineManagerFoot,
+.sinumerikContourEditFoot { display: none; }
+[data-active-tab="singleLine"] .sinumerikSLDFootContainer { display: block; }
+[data-active-tab="contourEdit"] .sinumerikContourEditFoot { display: block; }
+[data-active-tab="machineManager"] .sinumerikMachineManagerFoot { display: block; }
+
+// Position:absolute containers: visibility:hidden (out of flow, no layout impact)
+.sinumerikSingleLineDebugMain,
 .sinumerikMachineManagerMain,
 .sinumerikMachineManagerRightContainer,
 .toolContainer,
-.sinumerikContourEditFoot,
 .sinumerikContourEditMain,
-.sinumerikContourEditRight {
-  visibility: hidden;
-}
-[data-active-tab="singleLine"] .sinumerikSLDFootContainer,
+.sinumerikContourEditRight { visibility: hidden; }
 [data-active-tab="singleLine"] .sinumerikSingleLineDebugMain { visibility: visible; }
-[data-active-tab="contourEdit"] .sinumerikContourEditFoot,
 [data-active-tab="contourEdit"] .sinumerikContourEditMain,
 [data-active-tab="contourEdit"] .sinumerikContourEditRight { visibility: visible; }
-[data-active-tab="machineManager"] .sinumerikMachineManagerFoot,
 [data-active-tab="machineManager"] .sinumerikMachineManagerMain,
 [data-active-tab="machineManager"] .sinumerikMachineManagerRightContainer,
 [data-active-tab="machineManager"] .toolContainer { visibility: visible; }
