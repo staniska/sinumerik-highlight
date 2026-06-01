@@ -642,6 +642,7 @@
   font-weight: normal;
   position: relative;
   flex-direction: column;
+  flex-basis: 100%;
   width: 100%;
   padding: 5px 0 0;
   max-height: 250px;
@@ -1052,13 +1053,16 @@
 
 // contourEdit/tools/fs.js: folder list icon
 .editContour_foldersLi {
-  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
 }
 
 .editContour_foldersLiIcon {
-  position: absolute;
-  right: 0;
-  top: 4px;
+  flex-shrink: 0;
+  width: 1em;
+  text-align: center;
 }
 
 // Tab visibility — all tab containers hidden by default, shown via data-active-tab
