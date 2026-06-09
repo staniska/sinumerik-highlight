@@ -1,4 +1,3 @@
-// Моки для зависимостей, которые тянут Pulsar/Electron
 jest.mock('../lib/sinumerik', () => ({
     __esModule: true,
     default: {
@@ -29,44 +28,44 @@ const {getExpressionInBrackets, mathParse} = require('../lib/mathParser');
 
 // --- getExpressionInBrackets ---
 //
-// Функция извлекает содержимое скобок после matcher и оценивает его.
-// Возвращает {string, value, error?}.
-// value — это eval содержимого (не sqrt!). Caller делает replace(string, value),
-// чтобы в eval-выражении не было отрицательного аргумента.
+// Extracts the content inside brackets after `matcher` and evaluates it.
+// Returns {string, value, error?}.
+// `value` is eval of the inner string (not the sqrt result).
+// The caller replaces string→value so the outer eval never sees a negative sqrt arg.
 
 describe('getExpressionInBrackets', () => {
-    test('простое число: string = "25", value = 25', () => {
+    test('simple number: string="25", value=25', () => {
         const r = getExpressionInBrackets('Math.sqrt(25)', 'Math.sqrt');
         expect(r.string).toBe('25');
         expect(r.value).toBe(25);
         expect(r.error).toBeUndefined();
     });
 
-    test('выражение: string = "3*3", value = 9', () => {
+    test('expression: string="3*3", value=9', () => {
         const r = getExpressionInBrackets('Math.sqrt(3*3)', 'Math.sqrt');
         expect(r.string).toBe('3*3');
         expect(r.value).toBe(9);
     });
 
-    test('отрицательный аргумент — error и value=0', () => {
+    test('negative argument: value=0 and error set', () => {
         const r = getExpressionInBrackets('Math.sqrt(-4)', 'Math.sqrt');
         expect(r.value).toBe(0);
         expect(r.error).toMatch(/SQRT arg < 0/);
     });
 
-    test('очень маленькое значение приводится к нулю', () => {
+    test('near-zero value is clamped to 0', () => {
         const r = getExpressionInBrackets('Math.sqrt(1e-15)', 'Math.sqrt');
         expect(r.value).toBe(0);
         expect(r.error).toBeUndefined();
     });
 
-    test('невалидное выражение — error и string возвращается как value', () => {
+    test('invalid expression: error is set', () => {
         const r = getExpressionInBrackets('Math.sqrt(abc)', 'Math.sqrt');
         expect(r.error).toBeDefined();
     });
 });
 
-// --- mathParse (без именованных переменных) ---
+// --- mathParse ---
 
 describe('mathParse', () => {
     let View;
@@ -77,45 +76,43 @@ describe('mathParse', () => {
         View.sinumerikView.parseData.errors = [];
     });
 
-    test('простое сложение', () => {
+    test('addition', () => {
         expect(mathParse('1+2', 'prog', 0)).toBe(3);
     });
 
-    test('умножение', () => {
+    test('multiplication', () => {
         expect(mathParse('2*3', 'prog', 0)).toBe(6);
     });
 
-    test('деление', () => {
+    test('division', () => {
         expect(mathParse('10/4', 'prog', 0)).toBe(2.5);
     });
 
-    test('константа PI', () => {
-        const result = mathParse('$PI', 'prog', 0);
-        expect(result).toBeCloseTo(Math.PI, 5);
+    test('$PI constant', () => {
+        expect(mathParse('$PI', 'prog', 0)).toBeCloseTo(Math.PI, 5);
     });
 
-    test('тригонометрия SIN(90) = 1', () => {
-        // SIN заменяется на myMath.sin, который работает в градусах
+    test('SIN(90) = 1 (degrees)', () => {
         expect(mathParse('SIN(90)', 'prog', 0)).toBeCloseTo(1, 5);
     });
 
-    test('тригонометрия COS(0) = 1', () => {
+    test('COS(0) = 1', () => {
         expect(mathParse('COS(0)', 'prog', 0)).toBeCloseTo(1, 5);
     });
 
-    test('SQRT через замену', () => {
+    test('SQRT(25) = 5', () => {
         expect(mathParse('SQRT(25)', 'prog', 0)).toBeCloseTo(5, 5);
     });
 
-    test('ABS отрицательного', () => {
+    test('ABS of negative', () => {
         expect(mathParse('ABS(-7)', 'prog', 0)).toBe(7);
     });
 
-    test('ошибочное выражение возвращает null', () => {
+    test('invalid expression returns null', () => {
         expect(mathParse('abc_not_a_number', 'prog', 0)).toBeNull();
     });
 
-    test('именованная переменная подставляется', () => {
+    test('named variable is substituted', () => {
         View.sinumerikView.parseData.variables['prog'] = {
             myVar: {name: 'myVar', value: 42}
         };
