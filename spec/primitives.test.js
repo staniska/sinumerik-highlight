@@ -153,76 +153,76 @@ describe('generatePrimitives', () => {
     test('MSG returns primitives with MSG operator', async () => {
         const result = await generatePrimitives('MSG(Hello)', PROG, 0, prog('MSG(Hello)'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('MSG');
+        expect(result.operators[0].type).toBe('MSG');
     });
 
     test('STOPRE returns primitives with MSG/STOPRE operator', async () => {
         const result = await generatePrimitives('STOPRE', PROG, 0, prog('STOPRE'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('MSG');
-        expect(result[0].operators[0].value).toBe('STOPRE');
+        expect(result.operators[0].type).toBe('MSG');
+        expect(result.operators[0].value).toBe('STOPRE');
     });
 
     test('G4 returns Delay operator', async () => {
         const result = await generatePrimitives('G4 F1', PROG, 0, prog('G4 F1'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('Delay');
+        expect(result.operators[0].type).toBe('Delay');
     });
 
     test('TRANSMIT returns transformation operator', async () => {
         const result = await generatePrimitives('TRANSMIT', PROG, 0, prog('TRANSMIT'), parseRowsFn);
 
-        expect(result[0].operators[0]).toEqual({type: 'transformation', value: 'TRANSMIT'});
+        expect(result.operators[0]).toEqual({type: 'transformation', value: 'TRANSMIT'});
     });
 
     test('TRACYL returns transformation operator', async () => {
         const result = await generatePrimitives('TRACYL', PROG, 0, prog('TRACYL'), parseRowsFn);
 
-        expect(result[0].operators[0]).toEqual({type: 'transformation', value: 'TRACYL'});
+        expect(result.operators[0]).toEqual({type: 'transformation', value: 'TRACYL'});
     });
 
     test('TRAFOOF returns transformation operator', async () => {
         const result = await generatePrimitives('TRAFOOF', PROG, 0, prog('TRAFOOF'), parseRowsFn);
 
-        expect(result[0].operators[0]).toEqual({type: 'transformation', value: 'TRAFOOF'});
+        expect(result.operators[0]).toEqual({type: 'transformation', value: 'TRAFOOF'});
     });
 
     test('M30 returns M_func operator with value 30', async () => {
         const result = await generatePrimitives('M30', PROG, 0, prog('M30'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('M_func');
-        expect(result[0].operators[0].value).toBe('30');
+        expect(result.operators[0].type).toBe('M_func');
+        expect(result.operators[0].value).toBe('30');
     });
 
     test('G17 returns Plane operator', async () => {
         const result = await generatePrimitives('G17', PROG, 0, prog('G17'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('Plane');
-        expect(result[0].operators[0].value).toBe('G17');
+        expect(result.operators[0].type).toBe('Plane');
+        expect(result.operators[0].value).toBe('G17');
     });
 
     test('G0 returns moveGroup operator', async () => {
         const result = await generatePrimitives('G0', PROG, 0, prog('G0'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('moveGroup');
-        expect(result[0].operators[0].value).toBe('G0');
+        expect(result.operators[0].type).toBe('moveGroup');
+        expect(result.operators[0].value).toBe('G0');
     });
 
     test('T1 returns T_name operator', async () => {
         const result = await generatePrimitives('T1', PROG, 0, prog('T1'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('T_name');
+        expect(result.operators[0].type).toBe('T_name');
     });
 
     test('DIAMON returns diamon operator', async () => {
         const result = await generatePrimitives('DIAMON', PROG, 0, prog('DIAMON'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('diamon');
+        expect(result.operators[0].type).toBe('diamon');
     });
 
     test('DIAMOF returns diamof operator', async () => {
         const result = await generatePrimitives('DIAMOF', PROG, 0, prog('DIAMOF'), parseRowsFn);
 
-        expect(result[0].operators[0].type).toBe('diamof');
+        expect(result.operators[0].type).toBe('diamof');
     });
 });
