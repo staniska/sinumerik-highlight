@@ -5,3 +5,4 @@ node_modules
 #.gitignore
 /userData/
 CLAUDE.md
+spec/fixtures/
