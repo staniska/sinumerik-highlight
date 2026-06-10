@@ -1,3 +1,10 @@
+#### v0.3.24
+    - fix(contourEdit): double-traversal element in burnForest is highlighted red; clicking canvas exits selectArea, opens Contour Tools and selects the element for splitting
+    - fix(contourEdit): arc division now correctly recomputes middle point for each half via changeRadius
+    - fix(contourEdit): dragging an endpoint onto another point of the same element is blocked (< 1 mm threshold applies to start, end and arc middle)
+    - fix(contourEdit): burnedContour area built only from intersection points where both parent elements have > 1 rasterized point in burnedPoints (prevents single-point intruders from corrupting arc segments)
+    - feat(contourEdit): selected element in the list always scrolls into view
+
 #### v0.3.23
     - fix: machine data (machines.json) is now stored in ~/.pulsar/sinumerik-highlight/ and is no longer lost on package update; existing data is migrated automatically
 
