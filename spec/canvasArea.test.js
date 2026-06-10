@@ -164,28 +164,22 @@ describe('countRayCrossings', () => {
         expect(count2 % 2).toBe(1)
     })
 
-    test('tail segment sticking into rectangle does not affect inside/outside parity', () => {
-        // Rectangle with a dangling tail inside: tail goes from (5,3) to (5,8) — both endpoints free
-        // The caller (burnForest) is responsible for filtering out tails before calling countRayCrossings,
-        // so this test verifies that passing only the rect (without tail) gives correct result.
+    test('tail segment skews parity — demonstrates why burnForest uses isInsideBurnPath not countRayCrossings', () => {
+        // Vertical tail at x=5 sticking into the rectangle — burnForest no longer calls
+        // countRayCrossings directly; it uses the rasterized burnedPoints polygon instead,
+        // which has tails already stripped by the detachedElements mechanism.
         const rectWithTail = [
             line(0, 0, 10, 0, 1),
             line(10, 0, 10, 10, 2),
             line(10, 10, 0, 10, 3),
             line(0, 10, 0, 0, 4),
-            line(5, 3, 5, 8, 5),   // tail — both endpoints disconnected
+            line(5, 3, 5, 8, 5),  // tail — both endpoints disconnected
         ]
-        // Without tail (as burnForest filters): cursor inside → odd
-        const countClean = countRayCrossings({X: 2, Y: 5}, rect, x, y)
-        expect(countClean % 2).toBe(1)
-
-        // With tail included the parity might be wrong — demonstrates why burnForest filters by burnedIds
-        // tail at x=5 does NOT cross ray from (2,5) since it's a vertical line (getEquationOfLine b=0,
-        // handled by vertical branch) — but it does cross at x=5 for any y in [3,8].
-        // Verify that the vertical tail IS counted when not filtered:
-        const countWithTail = countRayCrossings({X: 2, Y: 5}, rectWithTail, x, y)
-        // Tail (x=5) crosses the ray at y=5 which is in [3,8], so it adds 1 crossing → parity flips
-        expect(countWithTail % 2).toBe(0) // wrong answer — demonstrates the bug burnForest now avoids
+        // Without tail: cursor inside → odd (correct)
+        expect(countRayCrossings({X: 2, Y: 5}, rect, x, y) % 2).toBe(1)
+        // With tail included: parity flips to even (wrong) — this is why countRayCrossings
+        // must not be called with the raw editContour when tails are present.
+        expect(countRayCrossings({X: 2, Y: 5}, rectWithTail, x, y) % 2).toBe(0)
     })
 
     test('arc contour: checkPointBelongsArc called for arc intersections', () => {
