@@ -163,4 +163,11 @@
     - add progressBar for slow forward & backward debugging
 
 #### v0.3.20
-    - optimize lathes C axis debugging 
+    - optimize lathes C axis debugging
+
+#### v0.3.22
+    - fix: programs with the same filename in different folders now correctly load their own machine, blank and contour settings
+    - fix: selected lines highlight no longer bleeds into subroutines; selecting a CALL line highlights the entire subroutine
+    - fix: Details button now works from 3D view; camera position is preserved when returning to 3D
+    - fix: C4 spindle axis no longer causes parse error
+    - fix: ruler labels no longer disappear at extreme zoom levels
