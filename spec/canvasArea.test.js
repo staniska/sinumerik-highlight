@@ -26,7 +26,7 @@ jest.mock('../lib/contourEdit/intersections', () => ({
 }));
 
 const View = require('../lib/sinumerik').default
-const {generateRoundedPoints, countRayCrossings, trimTailPoints} = require('../lib/contourEdit/tools/canvasArea')
+const {generateRoundedPoints, countRayCrossings, markTailPoints} = require('../lib/contourEdit/tools/canvasArea')
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -196,9 +196,9 @@ describe('countRayCrossings', () => {
     })
 })
 
-// ─── trimTailPoints ───────────────────────────────────────────────────────────
+// ─── markTailPoints ───────────────────────────────────────────────────────────
 
-describe('trimTailPoints', () => {
+describe('markTailPoints', () => {
     const setContourAndIntersections = (elements, intersections) => {
         View.sinumerikView.contourEditData.editContour = elements
         View.sinumerikView.contourEditData.points.intersection = intersections
@@ -212,8 +212,7 @@ describe('trimTailPoints', () => {
         endPoint,
     })
 
-    test('no free endpoints → all points kept', () => {
-        // Rectangle: all endpoints connected
+    test('no free endpoints → no points marked as tail', () => {
         setContourAndIntersections([
             line(0, 0, 10, 0, 1),
             line(10, 0, 10, 5, 2),
@@ -221,50 +220,47 @@ describe('trimTailPoints', () => {
             line(0, 5, 0, 0, 4),
         ], [])
         const points = [pt(0, 0, 1), pt(5, 0, 1), pt(10, 0, 1)]
-        expect(trimTailPoints(points)).toHaveLength(3)
+        const result = markTailPoints(points)
+        expect(result).toHaveLength(3)
+        expect(result.every(p => !p.isTail)).toBe(true)
     })
 
-    test('pure tail (free endpoints, no intersections) → all points removed', () => {
-        setContourAndIntersections([
-            line(5, 3, 5, 8, 99),  // completely disconnected
-        ], [])
+    test('pure tail (free endpoints, no intersections) → all points marked isTail', () => {
+        setContourAndIntersections([line(5, 3, 5, 8, 99)], [])
         const points = [pt(5, 3, 99, true), pt(5, 5, 99), pt(5, 8, 99, true)]
-        expect(trimTailPoints(points)).toHaveLength(0)
+        const result = markTailPoints(points)
+        expect(result).toHaveLength(3)
+        expect(result.every(p => p.isTail)).toBe(true)
     })
 
-    test('tail with intersection: points beyond intersection removed, points before kept', () => {
+    test('tail with intersection: points in tail zone marked, boundary points clean', () => {
         // Line from (0,0)[free] to (10,0)[connected], intersection at (5,0)
-        // Points at x=0,1,2,3,4 are in tail zone (closer to free end at x=0 than to int at x=5)
-        // Points at x=5,6,7,8,9,10 are kept (closer to intersection or on boundary side)
+        // t(x) = x/10; t_int = 0.5; tail zone: t < 0.5 → x = 0..4
         setContourAndIntersections([
-            line(0, 0, 10, 0, 1),   // start is free, end is connected to something
-            line(10, 0, 10, 10, 2), // connected at (10,0)
-        ], [
-            {parentElementsIds: [1, 2], coords: {X: 5, Y: 0}}
-        ])
+            line(0, 0, 10, 0, 1),
+            line(10, 0, 10, 10, 2),
+        ], [{parentElementsIds: [1, 2], coords: {X: 5, Y: 0}}])
         const points = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(x => pt(x, 0, 1))
-        const kept = trimTailPoints(points)
-        const keptX = kept.map(p => p.coords.X).sort((a, b) => a - b)
-        // x=0..4: dist to free end (0,0) < dist to int (5,0) → removed
-        // x=5..10: dist to int <= dist to free end → kept
-        expect(keptX).toEqual([5, 6, 7, 8, 9, 10])
+        const result = markTailPoints(points)
+        expect(result).toHaveLength(11)
+        const tailX = result.filter(p => p.isTail).map(p => p.coords.X).sort((a, b) => a - b)
+        const cleanX = result.filter(p => !p.isTail).map(p => p.coords.X).sort((a, b) => a - b)
+        expect(tailX).toEqual([0, 1, 2, 3, 4])
+        expect(cleanX).toEqual([5, 6, 7, 8, 9, 10])
     })
 
-    test('both endpoints free, two intersections: tail on both sides removed', () => {
+    test('both endpoints free, two intersections: tail on both sides marked', () => {
         // Line from (0,0)[free] to (20,0)[free], intersections at x=5 and x=15
-        // Tail zone: x=0..4 (closer to left free end) and x=16..20 (closer to right free end)
-        setContourAndIntersections([
-            line(0, 0, 20, 0, 1),
-        ], [
+        setContourAndIntersections([line(0, 0, 20, 0, 1)], [
             {parentElementsIds: [1, 99], coords: {X: 5, Y: 0}},
             {parentElementsIds: [1, 99], coords: {X: 15, Y: 0}},
         ])
         const points = Array.from({length: 21}, (_, i) => pt(i, 0, 1))
-        const kept = trimTailPoints(points)
-        const keptX = kept.map(p => p.coords.X).sort((a, b) => a - b)
-        // x=0..4: dist to (0,0) < dist to nearest int (5,0) → removed
-        // x=5..15: in boundary zone → kept
-        // x=16..20: dist to (20,0) < dist to nearest int (15,0) → removed
-        expect(keptX).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+        const result = markTailPoints(points)
+        expect(result).toHaveLength(21)
+        const tailX = result.filter(p => p.isTail).map(p => p.coords.X).sort((a, b) => a - b)
+        const cleanX = result.filter(p => !p.isTail).map(p => p.coords.X).sort((a, b) => a - b)
+        expect(tailX).toEqual([0, 1, 2, 3, 4, 16, 17, 18, 19, 20])
+        expect(cleanX).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
     })
 })
