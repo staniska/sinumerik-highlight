@@ -23,7 +23,7 @@ jest.mock('../lib/sinumerik', () => ({
             },
             singleLineDebugData: {machine: {firstSpindle: {name: 'C'}}},
             singleLineDebugHelpDiv: {C_As_Rot: {input: {checked: false}}},
-            programmData: {'TEST_MPF': {machine: {machineType: 'Lathe', machineName: 'test'}, contour: {name: ''}}},
+            programmData: {'/test/test.mpf': {machine: {machineType: 'Lathe', machineName: 'test'}, contour: {name: ''}}},
             singleLineDebugContourDiv: {contourDuplicate: {checked: false}},
         }
     }
@@ -68,7 +68,7 @@ jest.mock('../lib/degreesMath', () => ({
 }));
 
 global.atom = {
-    workspace: {getActiveTextEditor: () => ({getTitle: () => 'test.mpf'})}
+    workspace: {getActiveTextEditor: () => ({getTitle: () => 'test.mpf', getPath: () => '/test/test.mpf'})}
 };
 
 const {addY_for_C_rot, generatePrimitives} = require('../lib/primitives');
@@ -94,7 +94,7 @@ beforeEach(() => {
     View.sinumerikView.parseData.contourElements = {PROG: []};
     View.sinumerikView.parseData.moveGroup = '';
     View.sinumerikView.programmData = {
-        'TEST_MPF': {machine: {machineType: 'Lathe'}, contour: {name: ''}}
+        '/test/test.mpf': {machine: {machineType: 'Lathe'}, contour: {name: ''}}
     };
     View.sinumerikView.singleLineDebugHelpDiv.C_As_Rot.input.checked = false;
 });
@@ -124,7 +124,7 @@ describe('addY_for_C_rot', () => {
     });
 
     test('does not add Y when machine is not Lathe', () => {
-        View.sinumerikView.programmData['TEST_MPF'].machine.machineType = 'Mill';
+        View.sinumerikView.programmData['/test/test.mpf'].machine.machineType = 'Mill';
         View.sinumerikView.parseData.transformation = null;
         const primitives = {operators: [{type: 'coordinate', name: 'X', value: 10}]};
 
