@@ -1,95 +1,107 @@
 ## sinumerik-highlight package
 
+**Always verify the toolpath in a proper simulator, e.g. Sinutrain.**
 
-**Be sure to check the toolpath in a normal debugger, for example in the Sinutrain.**
+**The package contains many errors. Infinite loops are possible.**
 
-**Package contain many errors. Infinite loop possible.**
-
-**Please write issues as accurately as possible, with a minimum G-code for clarification.**
-
-***
-**Important! Before update package save ~.pulsar/packages/sinumerik-highlight/userData/ contents.**
+**Please report issues as accurately as possible, with a minimal G-code example for reproduction.**
 
 ***
-Press Ctrl + Alt + o to activate highlight and show right panel.
-Backlight colors are set tightly and were not checked in a dark theme.
 
-You can select Lathe or mill type in Machine manager. The selected type affects the DIAMON settings (for lather) and the main plane (G17 for mill and G18 for lathe).
-Subroutine folder path can be installed for every machine. CNC type can be selected for translation Sinumerik code to others CNC's using "sinumerik-to-nc" package (beta testing state).
+Press `Ctrl + Alt + O` to activate syntax highlighting and show the right panel.
+Syntax highlight colors are designed for light themes and have not been tested with dark themes.
 
-Paths to corresponding snippets can be defined for each machine. 
-See the snippet syntax on https://github.com/staniska/cnc-subroutines/tree/master/snippets/DMG_CTX510. " Alt + Spacebar" - open snippets menu. Navigation through the snippets 
-menu items is carried out using the arrows keys. 
+### Machine Manager
 
-Single line debugger allows you to see an approximate tool path.
-Parsing errors can be seen by clicking on the button "Details".
-Clicking on the graphic window allows you to control the view using the arrows as well as + (=) and - buttons.
-Scroll and drag works too
+Select Lathe or Mill type in the Machine Manager. The selected type affects the DIAMON setting (for lathes) and the default plane (G17 for mill, G18 for lathe).
 
-Blank & part contours can be programmed with G-code path & drawed on SingleLineDebug canvas
-Default names: BLANK.MPF & CONTOUR.MPF
+A subroutine folder path can be configured for each machine. The CNC type selector (Sinumerik / FANUC variants) is used by the companion **sinumerik-to-nc** package for G-code translation and has no effect on highlighting or debugging in this package.
 
-3D viewport of Single line debugger displays toolpath in perspective mode.
-Slow debug not supported in 3D mode yet. Mouse contols:
-- LMB - rotate view
-- Wheel - zoom
-- Shift + LMB - pan view
-- Ctrl - decrease rotate / pan / zoom speed
+Machine settings can be saved to a file as an inline comment in the program. On the next open, settings are restored automatically from that comment.
 
-The ContourEdit panel can help create roughing cycles ,
-but it is still being tested. The contour must be closed.
-The calculated intersection points will turn red. 
-Starting elements are highlighted in green, ending elements 
-are highlighted in blue. The result code is inserted into
-the program when the cursor position changes.
+Paths to snippet files can be defined for each machine.
+See snippet syntax at https://github.com/staniska/cnc-subroutines/tree/master/snippets/DMG_CTX510.
+`Alt + Spacebar` — open snippets menu. Navigate through items with the arrow keys.
 
-Linear interpolation supported including Ang modifier.
-Circular interpolation programming is possible through:
-- the end point and center
-- the end point and radius CR (including arc > 180 degrees - CR < 0)
-- the end point and AR
-- the center point and AR
+### Single Line Debugger
 
-#### Supported futures:
+Displays an approximate toolpath for the active program. Press `Ctrl + Alt + R` to redraw without resetting the viewport.
+
+- **Selecting lines** in the editor highlights the corresponding toolpath segment (thicker lines). If a subroutine call line is selected, the entire subroutine is highlighted.
+- **Details** button shows parsing errors. Works from both 2D and 3D views.
+- Click the canvas to focus it, then use arrow keys and `+` / `-` to navigate. Scroll and drag also work.
+- **Machining time** is calculated and displayed after parsing.
+
+Blank and part contours can be programmed as G-code files and drawn on the canvas.
+Default names: `BLANK.MPF` and `CONTOUR.MPF`.
+
+#### 3D viewport
+
+Displays the toolpath in perspective mode. Camera position is preserved when switching between 2D and 3D views.
+Mouse controls:
+- LMB — rotate view
+- Wheel — zoom
+- Shift + LMB — pan view
+- Ctrl — decrease rotate / pan / zoom speed
+
+Slow debug is not supported in 3D mode yet.
+
+### ContourEdit
+
+Helps create roughing cycles. Still in testing. The contour must be closed.
+Calculated intersection points are shown in red. Starting elements are highlighted in green, ending elements in blue. The resulting code is inserted into the program when the cursor position changes.
+
+### Interpolation
+
+Linear interpolation is supported including the ANG modifier.
+Circular interpolation:
+- end point + center
+- end point + radius CR (including arcs > 180° with CR < 0)
+- end point + AR
+- center point + AR
+
+### Supported features
+
 - Polar coordinates (AP, RP)
-- Rounding (RND) between two lines or line and arc
-- Chamfer (only CHR) between lines
+- Rounding (RND) between two lines or a line and an arc
+- Chamfer (CHR) between lines
 - DIAMON / DIAMOF / DIAM90
-- [A]TRANS & [A]ROT $ [A]MIRROR
-- Subroutines can be called from the same directory as the program and subroutine path of active machine with the parameters.
+- [A]TRANS, [A]ROT & [A]MIRROR
+- Subroutines called from the same directory as the program or from the machine subroutine path, with parameters
 - R-variables
-- User variables definition and call assignment.
-- User variables from a .DEF file placed in the subroutine folder are supported (REAL, INT and STING types). CHAN is ignored.
-- G40/41/42 different colors
+- User variable definitions and assignments
+- User variables from a `.DEF` file placed in the subroutine folder (REAL, INT and STRING types; CHAN is ignored)
+- G40 / G41 / G42 rendered in different colors
 - OFFN
-- $AA_IW[axis]
-- Tool orientation $TC_DP2 can be used for tools T101-T109, where the units place corresponds to orientation (there are help image in machine manager)\
-  >T103
-- Tool orientation (T10[1-9]) can be parsed from comment in previous line ex. ';T103'
-- $P_TOOLR (tool radius) set as comment line e.g. ;T103 R0.8 before tool change operator:\
-  >;T103 R0.8\
-  T="FINE_TOOL" D1 M6
-- Calc lathe tool compensation function decrease approach/departure paths for G41/42 without taking into tangent point. 
-  Programmed path not tool center point renders. Use with caution
-- Math SIN COS TAN ASIN ACOS ATAN2 POT SQRT TRUNC ROUND
+- `$AA_IW[axis]`
+- Tool orientation via `$TC_DP2`: tools T101–T109, units digit = orientation (see help image in Machine Manager)
+  > T103
+- Tool orientation can also be parsed from a comment on the previous line:
+  > ;T103
+- Tool radius via `$P_TOOLR` set as a comment before tool change:
+  > ;T103 R0.8
+  > T="FINE_TOOL" D1 M6
+- Lathe tool radius compensation (G41/G42): approach/departure paths are shortened. Programmed path is rendered, not the tool center path. Use with caution.
+- Math: SIN, COS, TAN, ASIN, ACOS, ATAN2, POT, SQRT, TRUNC, ROUND
 - GOTO[BF] jumps
-- IF - ELSE - ENDIF
+- IF – ELSE – ENDIF
 - REPEAT
-- WHILE - ENDWHILE
-- FOR TO  - ENDFOR
-- MSG(" ") 
+- WHILE – ENDWHILE
+- FOR TO – ENDFOR
+- MSG(" ")
 - EXECSTRING(" ")
-- string concatenation (<<) works correctly for strings without spaces; only for EXECSTRING there are no such restrictions
+- String concatenation (<<): works for strings without spaces; EXECSTRING has no such restriction
 - MCALL (max 1000 calls)
 
-SINUMERIK standart cycles (eg HOLES2, CYCLE81) not supported.**
+Standard SINUMERIK cycles (e.g. HOLES2, CYCLE81) are not supported.
 
+### Keyboard shortcuts
 
-
-#### Keyboard shortcuts:
-- "Ctrl + Alt + o" - open/close right panel
-- "Ctrl + Alt + ;" - comment/uncomment selected lines;<br>
-- "Ctrl + Alt + R" - draw tool path without changing scale
-- " Alt + Spacebar" - open snippets menu
+| Shortcut | Action |
+|---|---|
+| `Ctrl + Alt + O` | Open / close right panel |
+| `Ctrl + Alt + ;` | Comment / uncomment selected lines |
+| `Ctrl + Alt + R` | Redraw toolpath without resetting viewport |
+| `Alt + Spacebar` | Open snippets menu |
 
 ![A screenshot of your package](images/Screenshot_1.png)
