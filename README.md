@@ -31,20 +31,28 @@ Displays an approximate toolpath for the active program. Press `Ctrl + Alt + R` 
 - **Details** button shows parsing errors. Works from both 2D and 3D views.
 - Click the canvas to focus it, then use arrow keys and `+` / `-` to navigate. Scroll and drag also work.
 - **Machining time** is calculated and displayed after parsing.
+- **Click a trajectory element** to jump to its source line in the editor. **Double-click** a subroutine element to open a popup with syntax-highlighted code, the call stack, and an "Edit" button.
+- **Pin mode** — lock the SLD to a specific file while navigating subroutines. A suggestion to unpin appears when switching to an unrelated file.
 
 Blank and part contours can be programmed as G-code files and drawn on the canvas.
 Default names: `BLANK.MPF` and `CONTOUR.MPF`.
 
+#### WebGL renderer
+
+A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer. Toggle with the **Canvas / WebGL** button in the footer; the choice is remembered between sessions. The WebGL renderer adds hover highlighting (gold) and editor selection glow on the trajectory.
+
+#### Slow debug
+
+Enable the **Slow debug** checkbox to animate the toolpath step by step. The progress bar supports scrubbing: click to jump to a position, then use arrow keys to step frame by frame. The editor cursor follows the active frame — if the frame comes from a subroutine, both the main editor and the open subroutine editor scroll to the active line. Slow debug works in all three renderers (Canvas 2D, WebGL 2D, 3D).
+
 #### 3D viewport
 
-Displays the toolpath in perspective mode. Camera position is preserved when switching between 2D and 3D views.
+Displays the toolpath in perspective mode. Camera position is preserved when switching between 2D and 3D views. Switching to a new file automatically returns to 2D view.
 Mouse controls:
 - LMB — rotate view
 - Wheel — zoom
 - Shift + LMB — pan view
 - Ctrl — decrease rotate / pan / zoom speed
-
-Slow debug is not supported in 3D mode yet.
 
 ### ContourEdit
 

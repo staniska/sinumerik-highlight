@@ -71,19 +71,25 @@ global.atom = {
     workspace: {getActiveTextEditor: () => ({getTitle: () => 'test.mpf', getPath: () => '/test/test.mpf'})}
 };
 
-const {addY_for_C_rot, generatePrimitives} = require('../lib/primitives');
+const {addY_for_C_rot, generatePrimitives, generateCanvasPrimitives} = require('../lib/primitives');
 
 let View;
 
 beforeEach(() => {
     View = require('../lib/sinumerik').default;
+    View.sinumerikView.parseData.filename = '/test/test.mpf';
     View.sinumerikView.parseData.errors = [];
     View.sinumerikView.parseData.variables = {firstChannelVariables: {}, PROG: {}};
     View.sinumerikView.parseData.subroutines = [];
     View.sinumerikView.parseData.diamon = 0;
     View.sinumerikView.parseData.transformation = null;
     View.sinumerikView.parseData.mcall = {};
-    View.sinumerikView.parseData.frame = {mirror: {X: 1, Y: 1, Z: 1}};
+    View.sinumerikView.parseData.frame = {
+        mirror: {X: 1, Y: 1, Z: 1},
+        trans: {X: 0, Y: 0, Z: 0},
+        basis: [[1,0,0],[0,1,0],[0,0,1]],
+        invertBasis: [[1,0,0],[0,1,0],[0,0,1]]
+    };
     View.sinumerikView.parseData.planeAxes = ['X', 'Y', 'Z'];
     View.sinumerikView.parseData.planeFirstAxes = ['X', 'Y'];
     View.sinumerikView.parseData.planeCircleAxes = ['I', 'J'];
@@ -91,6 +97,7 @@ beforeEach(() => {
     View.sinumerikView.parseData.pole = {X: 0, Y: 0, Z: 0, AP: 0, RP: 0};
     View.sinumerikView.parseData.prevMove = [];
     View.sinumerikView.parseData.canvas = [];
+    View.sinumerikView.parseData.elementIdCounter = 0;
     View.sinumerikView.parseData.contourElements = {PROG: []};
     View.sinumerikView.parseData.moveGroup = '';
     View.sinumerikView.programmData = {
@@ -224,5 +231,106 @@ describe('generatePrimitives', () => {
         const result = await generatePrimitives('DIAMOF', PROG, 0, prog('DIAMOF'), parseRowsFn);
 
         expect(result.operators[0].type).toBe('diamof');
+    });
+});
+
+// --- generateCanvasPrimitives: elementId and sourceFile ---
+
+describe('generateCanvasPrimitives — elementId and sourceFile', () => {
+    const PROG = '/test/prog.mpf';
+
+    const g1Primitives = (x, y) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G1'},
+            {type: 'coordinate', name: 'X', value: String(x)},
+            {type: 'coordinate', name: 'Y', value: String(y)},
+        ]
+    });
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.moveGroup = '';
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.contourElements[PROG] = [];
+    });
+
+    test('G1 element gets elementId=0 on first call', () => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas[0].elementId).toBe(0);
+    });
+
+    test('G1 element gets sourceFile equal to programName', () => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas[0].sourceFile).toBe(PROG);
+    });
+
+    test('two consecutive G1 calls produce different elementIds', () => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        generateCanvasPrimitives(g1Primitives(20, 5), PROG, 1);
+
+        const ids = View.sinumerikView.parseData.canvas.map(el => el.elementId);
+        expect(ids[0]).toBe(0);
+        expect(ids[1]).toBe(1);
+        expect(ids[0]).not.toBe(ids[1]);
+    });
+
+    test('arc segments (G2/G3) from one call all share the same elementId', () => {
+        View.sinumerikView.parseData.moveGroup = 'G2';
+        View.sinumerikView.parseData.planeAxes = ['X', 'Y', 'Z'];
+        View.sinumerikView.parseData.planeFirstAxes = ['X', 'Y'];
+        View.sinumerikView.parseData.planeCircleAxes = ['I', 'J'];
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+        const arcPrimitives = {
+            operators: [
+                {type: 'moveGroup', value: 'G2'},
+                {type: 'coordinate', name: 'X', value: '-10'},
+                {type: 'coordinate', name: 'Y', value: '0'},
+                {type: 'circleCenter', name: 'I', value: '-10'},
+                {type: 'circleCenter', name: 'J', value: '0'},
+            ]
+        };
+        generateCanvasPrimitives(arcPrimitives, PROG, 0);
+
+        const arcSegments = View.sinumerikView.parseData.canvas.filter(el => el.elementId !== undefined);
+        expect(arcSegments.length).toBeGreaterThan(1);
+        const uniqueIds = new Set(arcSegments.map(el => el.elementId));
+        expect(uniqueIds.size).toBe(1);
+    });
+
+    test('arc segments from different calls have different elementIds', () => {
+        View.sinumerikView.parseData.moveGroup = 'G2';
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+        const arcPrimitives1 = {
+            operators: [
+                {type: 'moveGroup', value: 'G2'},
+                {type: 'coordinate', name: 'X', value: '-10'},
+                {type: 'coordinate', name: 'Y', value: '0'},
+                {type: 'circleCenter', name: 'I', value: '-10'},
+                {type: 'circleCenter', name: 'J', value: '0'},
+            ]
+        };
+        generateCanvasPrimitives(arcPrimitives1, PROG, 0);
+
+        View.sinumerikView.parseData.moveGroup = 'G2';
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 5, Z: 0};
+        const arcPrimitives2 = {
+            operators: [
+                {type: 'moveGroup', value: 'G2'},
+                {type: 'coordinate', name: 'X', value: '-10'},
+                {type: 'coordinate', name: 'Y', value: '5'},
+                {type: 'circleCenter', name: 'I', value: '-10'},
+                {type: 'circleCenter', name: 'J', value: '0'},
+            ]
+        };
+        generateCanvasPrimitives(arcPrimitives2, PROG, 1);
+
+        const firstId  = View.sinumerikView.parseData.canvas[0].elementId;
+        const secondId = View.sinumerikView.parseData.canvas.at(-1).elementId;
+        expect(firstId).not.toBe(secondId);
     });
 });
