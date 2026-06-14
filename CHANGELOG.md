@@ -7,7 +7,7 @@
     - feat(sld): subroutine buffers are read from open editors, so unsaved changes are picked up without saving
     - feat(sld): slow debug and pause mode now work in the WebGL 2D renderer and in the 3D viewport
     - feat(sld): progress bar scrubbing (click, arrow keys) works in all three renderers during slow debug
-    - feat(sld): during slow debug the editor cursor follows the active frame; if the frame comes from a subroutine, both the main editor and the subroutine editor (if open) scroll to the active line
+    - feat(sld): during slow debug the active source line is highlighted with a yellow background (marker decoration — user cursor is not moved); if the frame comes from a subroutine, both the main editor and the subroutine editor (if open) scroll to and highlight the active line
 
 #### v0.3.24
     - fix(contourEdit): double-traversal element in burnForest is highlighted red; clicking canvas exits selectArea, opens Contour Tools and selects the element for splitting

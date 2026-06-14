@@ -43,7 +43,7 @@ A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer.
 
 #### Slow debug
 
-Enable the **Slow debug** checkbox to animate the toolpath step by step. The progress bar supports scrubbing: click to jump to a position, then use arrow keys to step frame by frame. The editor cursor follows the active frame — if the frame comes from a subroutine, both the main editor and the open subroutine editor scroll to the active line. Slow debug works in all three renderers (Canvas 2D, WebGL 2D, 3D).
+Enable the **Slow debug** checkbox to animate the toolpath step by step. The progress bar supports scrubbing: click to jump to a position, then use arrow keys to step frame by frame. The active source line is highlighted with a yellow background — your cursor is not moved. If the frame comes from a subroutine, both the main editor and the open subroutine editor scroll to and highlight the active line. Slow debug works in all three renderers (Canvas 2D, WebGL 2D, 3D).
 
 #### 3D viewport
 
