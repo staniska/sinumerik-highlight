@@ -77,6 +77,7 @@ let View;
 
 beforeEach(() => {
     View = require('../lib/sinumerik').default;
+    View.sinumerikView.parseData.filename = '/test/test.mpf';
     View.sinumerikView.parseData.errors = [];
     View.sinumerikView.parseData.variables = {firstChannelVariables: {}, PROG: {}};
     View.sinumerikView.parseData.subroutines = [];
