@@ -39,7 +39,7 @@ Default names: `BLANK.MPF` and `CONTOUR.MPF`.
 
 #### WebGL renderer
 
-A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer. Toggle with the **Canvas / WebGL** button in the footer; the choice is remembered between sessions. The WebGL renderer adds hover highlighting (gold) and editor selection glow on the trajectory.
+A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer. Toggle with the **Canvas / WebGL** button in the footer; the choice is remembered between sessions. The WebGL renderer adds hover highlighting (thicker line) and editor selection glow on the trajectory.
 
 #### Slow debug
 
