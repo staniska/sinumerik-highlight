@@ -1,3 +1,6 @@
+#### v0.3.26
+    - fix(sld): clicking a trajectory element in WebGL renderer now highlights the source line with a marker decoration (same as slow debug) instead of moving the cursor; subroutine lines are highlighted in their editor if open
+
 #### v0.3.25
     - feat(sld): WebGL 2D renderer for Single Line Debugger — toggle between Canvas 2D and WebGL with the button in the footer; state is remembered across sessions
     - feat(sld): hover highlighting in WebGL renderer — elements under the cursor are highlighted in gold
