@@ -1,3 +1,14 @@
+#### v0.3.25
+    - feat(sld): WebGL 2D renderer for Single Line Debugger — toggle between Canvas 2D and WebGL with the button in the footer; state is remembered across sessions
+    - feat(sld): hover highlighting in WebGL renderer — elements under the cursor are highlighted in gold
+    - feat(sld): click an element to jump to its source line; double-click a subroutine element to open a popup with syntax-highlighted code, call stack and an "Edit" button
+    - feat(sld): selected lines in the editor create a glow on the corresponding trajectory segment in the WebGL renderer
+    - feat(sld): pin mode — SLD can be locked to a specific file when navigating subroutines; switching to an unrelated file suggests unpinning
+    - feat(sld): subroutine buffers are read from open editors, so unsaved changes are picked up without saving
+    - feat(sld): slow debug and pause mode now work in the WebGL 2D renderer and in the 3D viewport
+    - feat(sld): progress bar scrubbing (click, arrow keys) works in all three renderers during slow debug
+    - feat(sld): during slow debug the editor cursor follows the active frame; if the frame comes from a subroutine, both the main editor and the subroutine editor (if open) scroll to the active line
+
 #### v0.3.24
     - fix(contourEdit): double-traversal element in burnForest is highlighted red; clicking canvas exits selectArea, opens Contour Tools and selects the element for splitting
     - fix(contourEdit): arc division now correctly recomputes middle point for each half via changeRadius
