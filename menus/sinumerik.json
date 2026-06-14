@@ -26,6 +26,10 @@
             {
               "label": "Comment selected",
               "command": "sinumerik:comment"
+            },
+            {
+              "label": "Pin current file to SLD",
+              "command": "sinumerik:pin-sld-file"
             }
           ]
         }
