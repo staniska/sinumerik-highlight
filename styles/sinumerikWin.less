@@ -935,6 +935,9 @@
   white-space: nowrap;
 }
 
+.sinumerikSLDStringDiv--error { color: @sin-text-error; }
+.sinumerikSLDStringDiv--ok    { color: @sin-text-subtle; }
+
 .sinumerikSLDButtonRight {
   float: right;
 }
@@ -1165,11 +1168,13 @@
 
 .sinumerikTimeInput {
   width: 6em;
-  color: @sin-text-success;
+  // !important needed to beat the generic .sinumerikPanel input { color: @sin-text }
+  // rule above, whose specificity (0,3,1) is higher than any plain selector here.
+  color: @sin-text-success !important;
 }
 
 .sinumerikRapidTimeDiv {
-  color: @sin-text-warning;
+  color: @sin-text-error;
 }
 
 // snippets.js: popup menu shared style
