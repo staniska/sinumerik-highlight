@@ -1,3 +1,29 @@
+@import "ui-variables";
+
+// Semantic color aliases — single mapping point from package to Pulsar UI vars.
+// All hardcoded colors in this file should reference these aliases only.
+// Viewport canvases (2D/WebGL/3D/contourEdit) and trajectory colors are exempt.
+@sin-panel-bg:        @tool-panel-background-color;
+@sin-inset-bg:        @inset-panel-background-color;
+@sin-header-bg:       @panel-heading-background-color;
+@sin-overlay-bg:      @overlay-background-color;
+@sin-border:          @base-border-color;
+@sin-border-strong:   darken(@base-border-color, 15%);
+@sin-btn-bg:          @button-background-color;
+@sin-btn-hover:       @button-background-color-hover;
+@sin-btn-selected:    @button-background-color-selected;
+@sin-input-bg:        @input-background-color;
+@sin-text:            @text-color;
+@sin-text-subtle:     @text-color-subtle;
+@sin-text-selected:   @text-color-selected;
+@sin-text-info:       @text-color-info;
+@sin-text-success:    @text-color-success;
+@sin-text-warning:    @text-color-warning;
+@sin-text-error:      @text-color-error;
+@sin-error-bg:        fade(@text-color-error, 15%);
+@sin-highlight-bg:    @background-color-highlight;
+@sin-selected-bg:     @background-color-selected;
+
 .sinumerikPanel {
   --panel-width: 0px;
   --panel-height: 0px;
