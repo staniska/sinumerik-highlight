@@ -205,6 +205,36 @@
   align-items: center;
 }
 
+// Native <input>/<select> elements have no theme-aware defaults — explicitly
+// set theme-driven colors. Excludes checkbox/radio (browser handles their
+// shape natively; setting background-color/border would destroy the glyph).
+.sinumerikPanel input:not([type="checkbox"]):not([type="radio"]),
+.sinumerikPanel select,
+.sinumerikSnippetsMenu input:not([type="checkbox"]):not([type="radio"]),
+.sinumerikSnippetsMenu select {
+  background-color: @sin-input-bg;
+  color: @sin-text;
+  border: 1px solid @sin-border;
+}
+
+// Tell the browser our containers follow the theme's lightness, so native
+// checkbox/radio backgrounds render in the matching dark/light style.
+// Resolved at LESS compile time; Pulsar recompiles styles on theme change.
+.sinumerikPanel,
+.sinumerikSnippetsMenu {
+  & when (lightness(@base-background-color) < 50%) { color-scheme: dark; }
+  & when (lightness(@base-background-color) >= 50%) { color-scheme: light; }
+}
+
+// Checkbox/radio: only set accent-color so the check glyph follows the theme.
+// Native control shape and background are handled by browser via color-scheme.
+.sinumerikPanel input[type="checkbox"],
+.sinumerikPanel input[type="radio"],
+.sinumerikSnippetsMenu input[type="checkbox"],
+.sinumerikSnippetsMenu input[type="radio"] {
+  accent-color: @accent-bg-color;
+}
+
 .sinumerikInput {
   margin: 5px;
 }
@@ -252,11 +282,11 @@
 }
 
 .sinumerikButtonSelected {
-  background-color: @sin-btn-selected;
+  background-color: @sin-selected-bg;
 }
 
 .sinumerikButtonSelected:hover {
-  background-color: darken(@sin-btn-selected, 8%);
+  background-color: darken(@sin-selected-bg, 8%);
 }
 
 .sinumerikCoolantInput {
@@ -313,11 +343,11 @@
 }
 
 .snippetsLiSelected {
-  background-color: darkgray;
+  background-color: @sin-selected-bg;
 }
 
 .snippetsLi {
-  background-color: #eaeaeb;
+  background-color: @sin-highlight-bg;
 }
 
 .snipName {
@@ -325,12 +355,12 @@
 }
 
 .comment {
-  color: #057a7d;
+  color: @sin-text-info;
   font-style: italic;
 }
 
 .snipFormBody {
-  background-color: white;
+  background-color: @sin-input-bg;
   font-weight: bold;
   font-size: 1.5em;
 }
@@ -792,21 +822,21 @@
 }
 
 .sinumerik-equipment-close-button:hover {
-  box-shadow: 0 0 3px black;
+  box-shadow: 0 0 3px fade(@sin-text, 40%);
 }
 
 .editContourElement_short {
-  background-color: lightpink;
+  background-color: @sin-error-bg;
 }
 
 .singleLineDebugProgressLine {
   width: 100%;
   height: 15px;
-  box-shadow: 0 0 3px 1px darkgrey;
+  box-shadow: 0 0 3px 1px @sin-border-strong;
 }
 
 .progressBar_Active {
-  box-shadow: 0 0 4px 3px darkcyan;
+  box-shadow: 0 0 4px 3px @text-color-info;
 }
 
 // sinumerik-view.js
@@ -999,6 +1029,10 @@
 .sinumerikSLDPauseButton {
   width: 90%;
   margin-left: 5%;
+  // Pause-level indicator gradient — colors consumed by JS in changePauseBackground().
+  --pause-on:  fade(@text-color-success, 80%);
+  --pause-mid: fade(@text-color-success, 35%);
+  --pause-off: @sin-highlight-bg;
 }
 
 // single-line-debug.js: G40/G41/G42 legend
