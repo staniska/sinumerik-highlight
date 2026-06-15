@@ -332,7 +332,19 @@
 .sinumerikCanvas {
   margin: 0;
   border: @sin-border-strong solid 2px;
-  background-color: white;
+  background-color: @syntax-background-color;
+  // Theme-aware fill colors read by JS renderers via getComputedStyle.
+  // BLANK/CONTOUR shapes — dark variant keeps the same relative order (blank
+  // is the prominent background, contour darker on top) but adapts lightness.
+  // Axes/labels — same hue as syntax text, so they read on any editor background.
+  --blank-color: lightgray;
+  --contour-color: darkgray;
+  --axes-color: fade(@syntax-text-color, 50%);
+  --axes-text-color: fade(@syntax-text-color, 80%);
+  & when (lightness(@base-background-color) < 50%) {
+    --blank-color: #7e8290;
+    --contour-color: #545862;
+  }
 }
 
 .sinumerikErrorDiv {
@@ -368,8 +380,17 @@
 .contourEditCanvas {
   height: 100%;
   width: 100%;
-  background-color: white;
+  background-color: @syntax-background-color;
   border: @sin-border solid 2px;
+  // Theme-aware fill colors read by lib/contourEdit/canvas.js via
+  // getComputedStyle. Same scheme as .sinumerikCanvas.
+  --blank-color: lightgray;
+  --contour-color: darkgray;
+  --cursor-text-color: @syntax-text-color;
+  & when (lightness(@base-background-color) < 50%) {
+    --blank-color: #7e8290;
+    --contour-color: #545862;
+  }
 }
 
 
