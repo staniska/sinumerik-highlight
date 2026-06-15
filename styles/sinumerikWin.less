@@ -886,11 +886,35 @@
 }
 
 .sinumerikSLDRendererToggle {
-  margin-right: 6px;
+  display: flex;
+  flex-shrink: 0;
+  margin: 4px 6px 4px 0;
+  border: gainsboro 2px solid;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sinumerikSLDRendererOption {
+  padding: 0 8px;
   font-size: 0.85em;
-  opacity: 0.75;
-  &:hover {
-    opacity: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  line-height: 1.8;
+  transition: background-color 0.15s;
+
+  & + & {
+    border-left: gainsboro 1px solid;
+  }
+
+  &:hover:not(.sinumerikSLDRendererOption--active) {
+    background-color: gainsboro;
+  }
+
+  &--active {
+    background-color: #888;
+    color: white;
+    cursor: default;
   }
 }
 
