@@ -369,31 +369,31 @@
   height: 100%;
   width: 100%;
   background-color: white;
-  border: gainsboro solid 2px;
+  border: @sin-border solid 2px;
 }
 
 
 .contourEditPlaneButton {
-  background-color: #e7e7e7;
-  border: #b6b5b5 2px solid;
+  background-color: @sin-btn-bg;
+  border: @sin-border 2px solid;
   margin: 2px;
 }
 
 .contourEditPlaneButton:hover {
-  background-color: #b6b5b5;
+  background-color: @sin-btn-hover;
 }
 
 
 .contourEditPlaneButtonSelected {
-  background-color: #888888;
+  background-color: @sin-selected-bg;
 }
 
 .contourEditPlaneButtonSelected:hover {
-  background-color: #b6b5b5;
+  background-color: darken(@sin-selected-bg, 8%);
 }
 
 .contourEditContainer {
-  border: #b6b5b5 2px solid;
+  border: @sin-border 2px solid;
   margin: 2px;
   display: flex;
   flex-direction: column;
@@ -401,7 +401,7 @@
 }
 
 .contourEditContainer_visible {
-  border: #b6b5b5 2px solid;
+  border: @sin-border 2px solid;
   margin: 2px;
   display: flex;
   flex-direction: column;
@@ -409,15 +409,15 @@
 }
 
 .contourEditContainerHeader {
-  background-color: #e7e7e7;
-  border-bottom: #b6b5b5 2px solid;
+  background-color: @sin-header-bg;
+  border-bottom: @sin-border 2px solid;
   font-weight: bold;
   text-align: center;
   width: 100%;
 }
 
 .contourEditContainerHeader:hover {
-  background-color: #cccccc;
+  background-color: @sin-btn-hover;
 }
 
 .d_none {
@@ -425,23 +425,23 @@
 }
 
 .contourEditButton {
-  background-color: #e7e7e7;
-  border: #b6b5b5 2px solid;
+  background-color: @sin-btn-bg;
+  border: @sin-border 2px solid;
   border-radius: 5px;
   margin: 7px 3px 4px;
 }
 
 .contourEditButton:disabled {
-  color: #b6b5b5;
-  text-shadow: 0 0 2px #b6b5b5;
+  color: @sin-text-subtle;
+  text-shadow: 0 0 2px @sin-text-subtle;
 }
 
 .contourEditButton:hover:not(:disabled):not(:active) {
-  box-shadow: 2px 2px 3px black;
+  box-shadow: 2px 2px 3px fade(@sin-text, 40%);
 }
 
 .contourEditButton:active {
-  box-shadow: inset 1px 1px 2px black;
+  box-shadow: inset 1px 1px 2px fade(@sin-text, 40%);
 }
 
 .contourEditInput {
@@ -451,8 +451,8 @@
 }
 
 .btn_selected {
-  box-shadow: 1px 1px 2px black;
-  border: #565656 2px solid;
+  box-shadow: 1px 1px 2px fade(@sin-text, 40%);
+  border: @sin-border-strong 2px solid;
 }
 
 .contourEditRadio {
@@ -464,17 +464,17 @@
   display: inline-block;
   cursor: pointer;
   padding: 2px 5px;
-  border: #565656 2px solid;
+  border: @sin-border-strong 2px solid;
   border-radius: 5px;
   user-select: none;
 }
 
 .contourEditRadioLabel:hover {
-  box-shadow: 1px 1px 2px black;
+  box-shadow: 1px 1px 2px fade(@sin-text, 40%);
 }
 
 .contourEditRadio:checked + label {
-  background-color: #b6b5b5;
+  background-color: @sin-selected-bg;
 }
 
 .contourEditPrecision {
@@ -488,7 +488,7 @@
   width: 90%;
   content: '';
   position: absolute;
-  border-bottom: 1px solid #b6b5b5;
+  border-bottom: 1px solid @sin-border;
   top: 0;
   right: 5%;
 }
@@ -498,7 +498,7 @@
   width: 90%;
   content: '';
   position: absolute;
-  border-bottom: 1px solid #b6b5b5;
+  border-bottom: 1px solid @sin-border;
   bottom: 0;
   right: 5%;
 }
@@ -527,7 +527,7 @@
   width: 90%;
   content: '';
   position: absolute;
-  border-bottom: 1px solid #b6b5b5;
+  border-bottom: 1px solid @sin-border;
   top: 0;
   right: 5%;
 }
@@ -543,12 +543,12 @@
 }
 
 .editContourElement_selected {
-  background-color: #cccccc;
-  border: #b6b5b5 2px solid;
+  background-color: @sin-selected-bg;
+  border: @sin-border 2px solid;
 }
 
 .editContourElement_highlight {
-  background-color: #cccccc;
+  background-color: @sin-selected-bg;
 }
 
 .editContourElement_text {
@@ -562,7 +562,7 @@
 .contourEditElementProperties {
   width: fit-content;
   margin: 5px;
-  border: #b6b5b5 2px solid;
+  border: @sin-border 2px solid;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -570,8 +570,8 @@
 }
 
 .contourEditElementProperties_header {
-  background-color: #e7e7e7;
-  border-bottom: #b6b5b5 2px solid;
+  background-color: @sin-header-bg;
+  border-bottom: @sin-border 2px solid;
   font-weight: bold;
   width: 100%;
   display: flex;
@@ -671,11 +671,11 @@
 }
 
 .contourEditElementProperties_angleFix:hover {
-  background-color: #cccccc;
+  background-color: @sin-btn-hover;
 }
 
 .contourEditElementProperties_angleFix__checked {
-  box-shadow: inset 2px 2px 2px #b6b5b5;
+  box-shadow: inset 2px 2px 2px @sin-border;
   border-width: 1px;
   padding: 3px 0 0 3px;
 }
@@ -700,12 +700,12 @@
 }
 
 .editContour_contoursLi:hover {
-  background-color: #cccccc;
+  background-color: @sin-highlight-bg;
 }
 
 .editContour_contoursLi__selected {
-  background-color: #cccccc;
-  border: #b6b5b5 2px solid;
+  background-color: @sin-selected-bg;
+  border: @sin-border 2px solid;
 }
 
 .editContour_foldersLi {
@@ -731,7 +731,7 @@
 }
 
 .contourEdit_modalWindow {
-  border: #b6b5b5 1px solid;
+  border: @sin-border 1px solid;
   padding: 10px;
   width: 100%;
   display: flex;
@@ -740,7 +740,7 @@
 }
 
 .contourEdit_modalWindowHeader {
-  background-color: #e7e7e7;
+  background-color: @sin-header-bg;
   font-weight: bold
 }
 
@@ -761,16 +761,16 @@
 
 .contourEdit_modalWindow_Button {
   margin: 10px;
-  border: #b6b5b5 2px solid;
+  border: @sin-border 2px solid;
   border-radius: 5px;
 }
 
 .contourEdit_modalWindow_Button:hover {
-  box-shadow: 1px 1px 1px #565656;
+  box-shadow: 1px 1px 1px fade(@sin-text, 40%);
 }
 
 .contourEdit_modalWindow_Button:active {
-  box-shadow: inset 1px 1px 1px #565656;
+  box-shadow: inset 1px 1px 1px fade(@sin-text, 40%);
 }
 
 .contourEditContainer_contoursHeader {
@@ -778,12 +778,12 @@
   font-weight: bold;
   width: 90%;
   text-align: center;
-  border-bottom: #b6b5b5 2px solid;
-  border-top: #b6b5b5 2px solid;
+  border-bottom: @sin-border 2px solid;
+  border-top: @sin-border 2px solid;
 }
 
 .contourEditContainer_contoursHeader:hover {
-  background-color: #d0cfcf;
+  background-color: @sin-btn-hover;
 }
 
 .contourEditContainer_contours:not(.d_none) {
