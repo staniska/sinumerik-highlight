@@ -1124,6 +1124,12 @@
   background-size: 60%;
   opacity: 0.2;
   background-repeat: no-repeat;
+  // PNG triangles are dark — invert and bump opacity on dark themes so they
+  // don't disappear into the dark background. LESS guard resolves at compile.
+  & when (lightness(@base-background-color) < 50%) {
+    filter: invert(1);
+    opacity: 0.35;
+  }
 }
 
 .sinumerikToolElementFront {
