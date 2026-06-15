@@ -102,29 +102,29 @@
 
 .sinumerikPanelHeadButton {
   margin-left: 5px;
-  background-color: white;
-  border: gainsboro 2px solid;
+  background-color: @sin-btn-bg;
+  border: @sin-border 2px solid;
   height: 40px;
   width: 80px;
   transition-duration: 0.2s;
 }
 
 .sinumerikPanelHeadButton:hover {
-  background-color: gainsboro;
+  background-color: @sin-btn-hover;
 }
 
 
 .sinumerikPanelHeadButtonSelect {
   margin-left: 5px;
-  background-color: gainsboro;
-  border: gainsboro 2px solid;
+  background-color: @sin-btn-selected;
+  border: @sin-border 2px solid;
   height: 40px;
   width: 80px;
   transition-duration: 0.2s;
 }
 
 .sinumerikPanelHeadButtonSelect:hover {
-  background-color: darkgrey;
+  background-color: darken(@sin-btn-selected, 8%);
 }
 
 .sinumerikSingleLineDebugFoot {
@@ -170,8 +170,8 @@
 }
 
 .sinumerikFootButton {
-  background-color: white;
-  border: gainsboro 2px solid;
+  background-color: @sin-btn-bg;
+  border: @sin-border 2px solid;
   height: 40px;
   width: 60px;
   transition-duration: 0.2s;
@@ -180,7 +180,7 @@
 }
 
 .sinumerikFootButton:hover {
-  background-color: gainsboro;
+  background-color: @sin-btn-hover;
 }
 
 .sinumerikMachineManagerHead {
@@ -234,25 +234,25 @@
 
 .sinumerikButton {
   margin: 5px;
-  background-color: white;
-  border: gainsboro 2px solid;
+  background-color: @sin-btn-bg;
+  border: @sin-border 2px solid;
   transition-duration: 0.2s;
 }
 
 .sinumerikButton:enabled:hover {
-  background-color: gainsboro;
+  background-color: @sin-btn-hover;
 }
 
 .sinumerikButton:disabled {
-  color: gainsboro;
+  color: @sin-text-subtle;
 }
 
 .sinumerikButtonSelected {
-  background-color: gainsboro;
+  background-color: @sin-btn-selected;
 }
 
 .sinumerikButtonSelected:hover {
-  background-color: darkgray;
+  background-color: darken(@sin-btn-selected, 8%);
 }
 
 .sinumerikCoolantInput {
@@ -280,19 +280,19 @@
 }
 
 .sinumerikLi:hover {
-  background-color: gainsboro;
+  background-color: @sin-highlight-bg;
 }
 
 .sinumerikLiSelected {
-  background-color: gainsboro;
+  background-color: @sin-selected-bg;
 }
 
 .sinumerikLiSelected:hover {
-  background-color: darkgray;
+  background-color: darken(@sin-selected-bg, 8%);
 }
 
 .defaultMachineSelected {
-  box-shadow: inset 2px 2px darkgray;
+  box-shadow: inset 2px 2px @sin-border-strong;
 }
 
 .sinumerikCanvas {
@@ -881,7 +881,7 @@
 
 .sinumerikSLDParseStringDiv .sinumerikButton {
   background-color: unset;
-  border: 1px solid gainsboro;
+  border: 1px solid @sin-border;
 }
 
 .sinumerikSLDStringDiv {
@@ -915,7 +915,7 @@
   display: flex;
   flex-shrink: 0;
   margin: 4px 6px 4px 0;
-  border: gainsboro 2px solid;
+  border: @sin-border 2px solid;
   border-radius: 3px;
   overflow: hidden;
 }
@@ -930,16 +930,16 @@
   transition: background-color 0.15s;
 
   & + & {
-    border-left: gainsboro 1px solid;
+    border-left: @sin-border 1px solid;
   }
 
   &:hover:not(.sinumerikSLDRendererOption--active) {
-    background-color: gainsboro;
+    background-color: @sin-btn-hover;
   }
 
   &--active {
-    background-color: #888;
-    color: white;
+    background-color: @sin-btn-selected;
+    color: @sin-text-selected;
     cursor: default;
   }
 }
