@@ -2,8 +2,6 @@
 
 **Always verify the toolpath in a proper simulator, e.g. Sinutrain.**
 
-**The package contains many errors. Infinite loops are possible.**
-
 **Please report issues as accurately as possible, with a minimal G-code example for reproduction.**
 
 ***
@@ -39,7 +37,7 @@ Default names: `BLANK.MPF` and `CONTOUR.MPF`.
 
 #### WebGL renderer
 
-A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer. Toggle with the **Canvas / WebGL** button in the footer; the choice is remembered between sessions. The WebGL renderer adds hover highlighting (thicker line) and editor selection glow on the trajectory.
+A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer. Toggle with the **Canvas / WebGL** segmented control in the footer; the choice is remembered between sessions. The WebGL renderer adds hover highlighting (thicker line) and editor selection glow on the trajectory.
 
 #### Slow debug
 

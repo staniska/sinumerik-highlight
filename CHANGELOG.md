@@ -1,3 +1,8 @@
+#### v0.3.28
+    - feat(sld): slow debug animation stops immediately when the user starts editing the source file or switches to another editor; all remaining elements are rendered instantly without scrolling the editor
+    - feat(sld): after animation ends (naturally or interrupted), the last active source line stays highlighted until the user moves the cursor in that file
+    - feat(sld): Canvas / WebGL renderer switcher is now a segmented control — the active renderer is visually highlighted
+
 #### v0.3.26
     - fix(sld): clicking a trajectory element in WebGL renderer now highlights the source line with a marker decoration (same as slow debug) instead of moving the cursor; subroutine lines are highlighted in their editor if open
 
