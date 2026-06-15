@@ -7,7 +7,7 @@
 ***
 
 Press `Ctrl + Alt + O` to activate syntax highlighting and show the right panel.
-Syntax highlight colors are designed for light themes and have not been tested with dark themes.
+UI and syntax highlight colors follow the active Pulsar theme — both light and dark themes are supported.
 
 ### Machine Manager
 

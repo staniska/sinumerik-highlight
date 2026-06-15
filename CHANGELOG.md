@@ -1,3 +1,9 @@
+#### v0.3.29
+    - feat(theme): UI and syntax highlighting now follow Pulsar theme variables — the package looks correct in both light themes (baseline: One Light) and dark themes (One Dark and similar)
+    - feat(theme): native `<input>`/`<select>` elements adopt theme background, text and border colors; checkbox/radio glyphs use the theme accent color and render in the matching dark/light style
+    - feat(syntax): token colors that read poorly on dark editor backgrounds (axis, operator, feed, message, G-functions, circle centers, etc.) have been adjusted for cross-theme contrast
+    - fix(machine-manager): tool orientation triangles no longer disappear into the background on dark themes
+
 #### v0.3.28
     - feat(sld): slow debug animation stops immediately when the user starts editing the source file or switches to another editor; all remaining elements are rendered instantly without scrolling the editor
     - feat(sld): after animation ends (naturally or interrupted), the last active source line stays highlighted until the user moves the cursor in that file
