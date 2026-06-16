@@ -1,3 +1,8 @@
+#### v0.3.30
+    - fix(contourEdit): dragging an arc endpoint onto the opposite endpoint of the same arc no longer merges them into a degenerate full circle — the drop-time snap now ignores points of the dragged element, and the drag handler reverts the moved arc point to its original position when the proximity check triggers
+    - fix(contourEdit): editing an arc endpoint coordinate in ElementProperties is rejected with an alert when the new value would merge start with end
+    - fix(contourEdit): loading shape elements from blank/contour now includes CHR chamfers — `insertChr` pushes the truncated leading line and the chamfer line to `parseData.contourElements` with explicit X/Y/Z indexing so coordinates stay in the right slots across G17/G18/G19 planes
+
 #### v0.3.29
     - feat(theme): UI and syntax highlighting now follow Pulsar theme variables — the package looks correct in both light themes (baseline: One Light) and dark themes (One Dark and similar)
     - feat(theme): native `<input>`/`<select>` elements adopt theme background, text and border colors; checkbox/radio glyphs use the theme accent color and render in the matching dark/light style
