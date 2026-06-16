@@ -59,6 +59,29 @@ Mouse controls:
 Helps create roughing cycles. Still in testing. The contour must be closed.
 Calculated intersection points are shown in red. Starting elements are highlighted in green, ending elements in blue. The resulting code is inserted into the program when the cursor position changes.
 
+When two lines overlap (fully or partially) in the same area, hover picks one or the other based on which side of the line the cursor sits on, so a microscopic mouse movement is enough to switch between coincident lines.
+
+### Bounding contour from a parametric subroutine
+
+A subroutine such as `YAMA(X_START, X_END, Z_LEFT, Z_RIGHT, MAX_DEPTH, _ANG, _RND)` can carry a parametric outer-contour description between special comment markers:
+
+```
+;BOUNDING_CONTOUR_BEGIN
+; IF (_ANG<20)
+;   _ANG=30
+; ENDIF
+; G0 X=X_START Z=Z_LEFT
+; G1 X=X_END ANG=-_ANG RND=_RND+12.5
+; Z=Z_RIGHT-(X_START-X_END)/2/TAN(_ANG) RND=_RND+12.5
+; X=X_START ANG=_ANG
+; Z=Z_LEFT
+;BOUNDING_CONTOUR_END
+```
+
+Every line of the block is prefixed with `;` so the block is inert at the machine and in normal parsing. Right-click the call line in the main program → **Create bounding contour** to materialize the shape: PROC parameters and `$AA_IW[X/Y/Z]` are resolved at the moment of the call, the generated shape lands in the contourEdit folder list as `SUBNAME · row N` and can be used as one of the sources for building a remnant-blank contour. Clicking the entry highlights the call row in the editor; moving the cursor clears the highlight.
+
+Default values from the body's `IF/ENDIF` chain must be duplicated at the top of the bounding block — local `DEF` variables aren't visible because the body hasn't run yet. Calls inside `WHILE` / `FOR` / `REPEAT` are refused to keep the result unambiguous.
+
 ### Interpolation
 
 Linear interpolation is supported including the ANG modifier.
