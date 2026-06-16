@@ -362,6 +362,12 @@
   background-color: @sin-highlight-bg;
 }
 
+.snippetsLiEmpty {
+  color: @sin-text-subtle;
+  font-style: italic;
+  padding: 4px 8px;
+}
+
 .snipName {
   font-weight: bold;
 }
@@ -1212,6 +1218,21 @@
 
 .sinumerikSnippetsInputIcon {
   float: left;
+}
+
+.sinumerikSnippetsCloseButton {
+  float: right;
+  background: transparent;
+  border: none;
+  color: @sin-text-subtle;
+  font-size: 1.4em;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+
+  &:hover {
+    color: @sin-text;
+  }
 }
 
 .sinumerikSnippetsOl {
