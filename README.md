@@ -35,6 +35,8 @@ Displays an approximate toolpath for the active program. Press `Ctrl + Alt + R` 
 Blank and part contours can be programmed as G-code files and drawn on the canvas.
 Default names: `BLANK.MPF` and `CONTOUR.MPF`.
 
+Shapes (blank, contour) are always read from the saved file on disk, while the main program trajectory follows the live editor buffer. Editing a shape file and comparing the saved shape against the live trajectory makes the effect of every change immediately visible — save the file when the new shape is the one you want.
+
 #### WebGL renderer
 
 A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer. Toggle with the **Canvas / WebGL** segmented control in the footer; the choice is remembered between sessions. The WebGL renderer adds hover highlighting (thicker line) and editor selection glow on the trajectory.
