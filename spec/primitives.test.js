@@ -25,6 +25,7 @@ jest.mock('../lib/sinumerik', () => ({
             singleLineDebugHelpDiv: {C_As_Rot: {input: {checked: false}}},
             programmData: {'/test/test.mpf': {machine: {machineType: 'Lathe', machineName: 'test'}, contour: {name: ''}}},
             singleLineDebugContourDiv: {contourDuplicate: {checked: false}},
+            singleLineDebugBlankDiv: {blankDuplicate: {checked: false}},
         }
     }
 }));
