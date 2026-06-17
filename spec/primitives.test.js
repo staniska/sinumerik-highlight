@@ -99,6 +99,7 @@ beforeEach(() => {
     View.sinumerikView.parseData.canvas = [];
     View.sinumerikView.parseData.elementIdCounter = 0;
     View.sinumerikView.parseData.contourElements = {PROG: []};
+    View.sinumerikView.parseData.currentBucket = 'PROG';
     View.sinumerikView.parseData.moveGroup = '';
     View.sinumerikView.programmData = {
         '/test/test.mpf': {machine: {machineType: 'Lathe'}, contour: {name: ''}}
@@ -251,6 +252,7 @@ describe('generateCanvasPrimitives — elementId and sourceFile', () => {
         View.sinumerikView.parseData.moveGroup = '';
         View.sinumerikView.parseData.plane = 'G17';
         View.sinumerikView.parseData.contourElements[PROG] = [];
+        View.sinumerikView.parseData.currentBucket = PROG;
     });
 
     test('G1 element gets elementId=0 on first call', () => {
