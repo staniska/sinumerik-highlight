@@ -1315,10 +1315,40 @@
 }
 
 .sld-popup-callstack {
-  padding: 4px 12px;
-  color: @text-color-subtle;
+  padding: 4px 8px;
   border-bottom: 1px solid @base-border-color;
   font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.sld-popup-chip {
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: @text-color-subtle;
+  &:hover {
+    background: @background-color-highlight;
+    color: @text-color;
+  }
+}
+
+.sld-popup-chip--active {
+  background: @button-background-color-selected;
+  color: @text-color-selected;
+  cursor: default;
+  &:hover {
+    background: @button-background-color-selected;
+    color: @text-color-selected;
+  }
+}
+
+.sld-popup-chip-sep {
+  color: @text-color-subtle;
+  padding: 0 2px;
+  user-select: none;
 }
 
 .sld-popup-code {

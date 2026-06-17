@@ -337,3 +337,60 @@ describe('generateCanvasPrimitives — elementId and sourceFile', () => {
         expect(firstId).not.toBe(secondId);
     });
 });
+
+describe('callStack propagation', () => {
+    // Simulate what primitives.js does after parseRowsFn returns:
+    // stamp callStack entries onto elements added during the sub call.
+    // The test directly exercises the same prepend logic.
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.canvas = [];
+        View.sinumerikView.parseData.filename = '/main.mpf';
+        View.sinumerikView.parseData.subroutines = [
+            {name: 'A_SPF', path: '/A.spf'},
+            {name: 'B_SPF', path: '/B.spf'},
+        ];
+    });
+
+    function stamp(canvasLengthBefore, callerPath, progRowNum) {
+        for (let i = canvasLengthBefore; i < View.sinumerikView.parseData.canvas.length; i++) {
+            const el = View.sinumerikView.parseData.canvas[i];
+            el.callStack = [{file: callerPath, row: progRowNum}, ...(el.callStack ?? [])];
+            el.mainRow = progRowNum;
+        }
+    }
+
+    test('single subroutine call: callStack has one entry pointing to main', () => {
+        // Simulate main(row 5) → A
+        View.sinumerikView.parseData.canvas.push({type: 'G1', row: 2, sourceFile: '/A.spf'});
+        stamp(0, '/main.mpf', 5);
+
+        const el = View.sinumerikView.parseData.canvas[0];
+        expect(el.callStack).toEqual([{file: '/main.mpf', row: 5}]);
+        expect(el.mainRow).toBe(5);
+    });
+
+    test('two-level nesting: callStack reads outermost-first', () => {
+        // Simulate main(M1=10) → A(A1=3) → B
+        // Step 1: return from B inside A  → stamp with A at row 3
+        View.sinumerikView.parseData.canvas.push({type: 'G1', row: 7, sourceFile: '/B.spf'});
+        stamp(0, '/A.spf', 3);
+
+        // Step 2: return from A inside main → stamp with main at row 10
+        stamp(0, '/main.mpf', 10);
+
+        const el = View.sinumerikView.parseData.canvas[0];
+        expect(el.callStack).toEqual([
+            {file: '/main.mpf', row: 10},
+            {file: '/A.spf',    row: 3},
+        ]);
+        expect(el.mainRow).toBe(10);
+    });
+
+    test('element directly in main has no callStack', () => {
+        View.sinumerikView.parseData.canvas.push({type: 'G1', row: 1, sourceFile: '/main.mpf'});
+        // No stamp — main-program elements are not inside a subroutine call
+        const el = View.sinumerikView.parseData.canvas[0];
+        expect(el.callStack).toBeUndefined();
+    });
+});
