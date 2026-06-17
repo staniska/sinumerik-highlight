@@ -3,7 +3,62 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName } = require('../lib/utils');
+
+describe('normalizeFileName', () => {
+    test('replaces all dots with underscores and uppercases', () => {
+        expect(normalizeFileName('contour.mpf')).toBe('CONTOUR_MPF');
+    });
+
+    test('handles already-uppercase input', () => {
+        expect(normalizeFileName('CONTOUR.MPF')).toBe('CONTOUR_MPF');
+    });
+
+    test('preserves existing underscores in basename', () => {
+        expect(normalizeFileName('CONTOUR_MIRR.MPF')).toBe('CONTOUR_MIRR_MPF');
+    });
+
+    test('replaces every dot, not just the first', () => {
+        expect(normalizeFileName('foo.bar.baz')).toBe('FOO_BAR_BAZ');
+    });
+
+    test('handles input with no dots', () => {
+        expect(normalizeFileName('contour')).toBe('CONTOUR');
+    });
+
+    test('handles empty string', () => {
+        expect(normalizeFileName('')).toBe('');
+    });
+});
+
+// The bucket-key derivation in primitives.js / interpretator.js extracts
+// basename via name.split(/[\\/]/).pop() so the same key is produced on
+// Linux ('/foo/bar/CONTOUR.MPF') and Windows ('C:\\foo\\bar\\CONTOUR.MPF').
+// These tests freeze that contract.
+describe('cross-platform basename + normalizeFileName', () => {
+    const basename = (p) => p.split(/[\\/]/).pop();
+
+    test('Linux absolute path', () => {
+        expect(normalizeFileName(basename('/home/user/CONTOUR.MPF'))).toBe('CONTOUR_MPF');
+    });
+
+    test('Windows absolute path with backslashes', () => {
+        expect(normalizeFileName(basename('C:\\Users\\user\\CONTOUR.MPF'))).toBe('CONTOUR_MPF');
+    });
+
+    test('Windows path with forward slashes (Node normalised)', () => {
+        expect(normalizeFileName(basename('C:/Users/user/CONTOUR_MIRR.MPF'))).toBe('CONTOUR_MIRR_MPF');
+    });
+
+    test('relative path', () => {
+        expect(normalizeFileName(basename('./subdir/BLANK.SPF'))).toBe('BLANK_SPF');
+    });
+
+    test('bare filename', () => {
+        expect(normalizeFileName(basename('YAMA.SPF'))).toBe('YAMA_SPF');
+    });
+});
+
 
 describe('extractBoundingContourBlock', () => {
     let warnSpy;
