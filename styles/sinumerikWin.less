@@ -1201,9 +1201,13 @@
 
 .sinumerikTimeInput {
   width: 6em;
+  cursor: pointer;
   // !important needed to beat the generic .sinumerikPanel input { color: @sin-text }
   // rule above, whose specificity (0,3,1) is higher than any plain selector here.
   color: @sin-text-success !important;
+  &:hover {
+    background-color: @sin-btn-hover !important;
+  }
 }
 
 .sinumerikRapidTimeDiv {
