@@ -26,10 +26,10 @@ See snippet syntax at https://github.com/staniska/cnc-subroutines/tree/master/sn
 Displays an approximate toolpath for the active program. Press `Ctrl + Alt + R` to redraw without resetting the viewport.
 
 - **Selecting lines** in the editor highlights the corresponding toolpath segment (thicker lines). If a subroutine call line is selected, the entire subroutine is highlighted.
-- **Details** button shows parsing errors. Works from both 2D and 3D views.
+- **Details** button shows parsing errors. Works in Canvas 2D, WebGL, and 3D views.
 - Click the canvas to focus it, then use arrow keys and `+` / `-` to navigate. Scroll and drag also work.
 - **Machining time** is calculated and displayed after parsing.
-- **Click a trajectory element** to jump to its source line in the editor. **Double-click** a subroutine element to open a popup with syntax-highlighted code, the call stack, and an "Edit" button.
+- **Click a trajectory element** to jump to its source line in the editor. **Double-click** a subroutine element to open a popup with syntax-highlighted code and a clickable call-stack: each nesting level is a chip — click it to inspect and navigate any intermediate call site. An "Edit" button opens the file at the active level.
 - **Pin mode** — lock the SLD to a specific file while navigating subroutines. A suggestion to unpin appears when switching to an unrelated file.
 
 Blank and part contours can be programmed as G-code files and drawn on the canvas.
@@ -53,6 +53,8 @@ Mouse controls:
 - Wheel — zoom
 - Shift + LMB — pan view
 - Ctrl — decrease rotate / pan / zoom speed
+
+Pan and zoom speed scale automatically with camera distance, so large scenes and fine details are equally navigable.
 
 ### ContourEdit
 
