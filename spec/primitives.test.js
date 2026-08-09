@@ -57,6 +57,7 @@ jest.mock('../lib/stringParse', () => ({
 
 jest.mock('../lib/utils', () => ({
     normalizeFileName: jest.fn((name) => name.replace(/\./g, '_').toUpperCase()),
+    unmaskStringSpaces: jest.fn((str) => str),
 }));
 
 jest.mock('../lib/degreesMath', () => ({

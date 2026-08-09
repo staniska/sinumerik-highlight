@@ -3,7 +3,52 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL } = require('../lib/utils');
+
+describe('maskStringSpaces / unmaskStringSpaces', () => {
+    const S = STRING_SPACE_SENTINEL;
+
+    it('masks spaces inside a double-quoted literal', () => {
+        expect(maskStringSpaces('MSG("HELLO WORLD")')).toBe(`MSG("HELLO${S}WORLD")`);
+    });
+
+    it('leaves spaces outside quotes untouched', () => {
+        expect(maskStringSpaces('G1 X10 Y20')).toBe('G1 X10 Y20');
+    });
+
+    it('does not touch structural spaces around << between two literals', () => {
+        // greedy ".+" would wrongly mask the space around <<; per-literal must not
+        expect(maskStringSpaces('"A B" << "C D"')).toBe(`"A${S}B" << "C${S}D"`);
+    });
+
+    it('leaves single-quoted binary/hex constants alone', () => {
+        expect(maskStringSpaces("R1='B10' R2='H1F'")).toBe("R1='B10' R2='H1F'");
+    });
+
+    it('leaves an unterminated quote unchanged', () => {
+        expect(maskStringSpaces('MSG("oops')).toBe('MSG("oops');
+    });
+
+    it('round-trips: unmask undoes mask', () => {
+        const line = 'MSG("Value is here")';
+        expect(unmaskStringSpaces(maskStringSpaces(line))).toBe(line);
+    });
+
+    it('unmask is a no-op on strings without the sentinel', () => {
+        expect(unmaskStringSpaces('plain text')).toBe('plain text');
+    });
+
+    it('handles non-string input gracefully', () => {
+        expect(maskStringSpaces(undefined)).toBe(undefined);
+        expect(unmaskStringSpaces(null)).toBe(null);
+    });
+
+    it('preserves character offsets (single-char sentinel)', () => {
+        const masked = maskStringSpaces('MSG("A B")');
+        expect(masked.length).toBe('MSG("A B")'.length);
+        expect(masked.indexOf('(')).toBe('MSG("A B")'.indexOf('('));
+    });
+});
 
 describe('normalizeFileName', () => {
     test('replaces all dots with underscores and uppercases', () => {
