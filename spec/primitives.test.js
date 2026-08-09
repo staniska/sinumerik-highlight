@@ -8,6 +8,7 @@ jest.mock('../lib/sinumerik', () => ({
                 subroutines: [],
                 diamon: 0,
                 diam90: 0,
+                unitMult: 1,
                 transformation: null,
                 mcall: {},
                 frame: {mirror: {X: 1, Y: 1, Z: 1}},
@@ -58,6 +59,7 @@ jest.mock('../lib/stringParse', () => ({
 jest.mock('../lib/utils', () => ({
     normalizeFileName: jest.fn((name) => name.replace(/\./g, '_').toUpperCase()),
     unmaskStringSpaces: jest.fn((str) => str),
+    isLinearAxis: jest.fn((name) => /^[XYZUVW]$/.test(name)),
 }));
 
 jest.mock('../lib/degreesMath', () => ({
@@ -84,6 +86,7 @@ beforeEach(() => {
     View.sinumerikView.parseData.variables = {firstChannelVariables: {}, PROG: {}};
     View.sinumerikView.parseData.subroutines = [];
     View.sinumerikView.parseData.diamon = 0;
+    View.sinumerikView.parseData.unitMult = 1;
     View.sinumerikView.parseData.transformation = null;
     View.sinumerikView.parseData.mcall = {};
     View.sinumerikView.parseData.frame = {
