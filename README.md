@@ -13,6 +13,8 @@ UI and syntax highlight colors follow the active Pulsar theme — both light and
 
 Select Lathe or Mill type in the Machine Manager. The selected type affects the DIAMON setting (for lathes) and the default plane (G17 for mill, G18 for lathe).
 
+Each machine also has a metric/inch unit setting, used as the default when a program has no explicit `G70`/`G71`. Machines created before this setting existed default to metric.
+
 A subroutine folder path can be configured for each machine. The CNC type selector (Sinumerik / FANUC variants) is used by the companion **sinumerik-to-nc** package for G-code translation and has no effect on highlighting or debugging in this package.
 
 Machine settings can be saved to a file as an inline comment in the program. On the next open, settings are restored automatically from that comment.
@@ -36,6 +38,8 @@ Blank and part contours can be programmed as G-code files and drawn on the canva
 Default names: `BLANK.MPF` and `CONTOUR.MPF`.
 
 Shapes (blank, contour) are always read from the saved file on disk, while the main program trajectory follows the live editor buffer. Editing a shape file and comparing the saved shape against the live trajectory makes the effect of every change immediately visible — save the file when the new shape is the one you want.
+
+A metric/inch toggle in the footer controls how the ruler numbers are displayed. It's display-only — it never changes what the program actually does; the toolpath itself always follows the machine's configured units or an explicit `G70`/`G71` in the code.
 
 #### WebGL renderer
 
@@ -62,6 +66,8 @@ Helps create roughing cycles. Still in testing. The contour must be closed.
 Calculated intersection points are shown in red. Starting elements are highlighted in green, ending elements in blue. The resulting code is inserted into the program when the cursor position changes.
 
 When two lines overlap (fully or partially) in the same area, hover picks one or the other based on which side of the line the cursor sits on, so a microscopic mouse movement is enough to switch between coincident lines.
+
+The plane (G17/G18/G19) and units (metric/inch) selectors sit at the top of the panel. Switching units changes the precision snap grid (`1 / 0.5 / 0.1 / 0.01` mm vs. `0.1 / 0.05 / 0.01 / 0.001"`), the coordinate/radius fields in the element properties panel, the cursor-position readout, and the numbers written into generated turning cycles. All of this is display and code-generation only — the underlying contour geometry is always stored in millimeters, so switching units never moves or rescales the contour itself.
 
 ### Bounding contour from a parametric subroutine
 
@@ -99,6 +105,7 @@ Circular interpolation:
 - Rounding (RND) between two lines or a line and an arc
 - Chamfer (CHR) between lines
 - DIAMON / DIAMOF / DIAM90
+- G70 / G700 (inch) and G71 / G710 (metric) — mid-program unit switching; the machine's own unit setting is the default when neither appears
 - [A]TRANS, [A]ROT & [A]MIRROR
 - Subroutines called from the same directory as the program or from the machine subroutine path, with parameters
 - R-variables
