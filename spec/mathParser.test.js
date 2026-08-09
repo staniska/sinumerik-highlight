@@ -11,6 +11,7 @@ jest.mock('../lib/sinumerik', () => ({
                 },
                 diamon: 0,
                 diam90: 0,
+                unitMult: 1,
                 activeToolR: 0,
                 activeTool: 0,
                 errors: [],
@@ -23,6 +24,8 @@ jest.mock('../lib/coordinates', () => ({
     __esModule: true,
     getCoordinatesInFrame: jest.fn(() => [0, 0, 0])
 }));
+
+const {getCoordinatesInFrame} = require('../lib/coordinates');
 
 const {getExpressionInBrackets, mathParse} = require('../lib/mathParser');
 
@@ -74,6 +77,8 @@ describe('mathParse', () => {
         View = require('../lib/sinumerik').default;
         View.sinumerikView.parseData.variables = {firstChannelVariables: {}};
         View.sinumerikView.parseData.errors = [];
+        View.sinumerikView.parseData.unitMult = 1;
+        getCoordinatesInFrame.mockReturnValue([0, 0, 0]);
     });
 
     test('addition', () => {
@@ -117,5 +122,17 @@ describe('mathParse', () => {
             myVar: {name: 'myVar', value: 42}
         };
         expect(mathParse('myVar+1', 'prog', 0)).toBe(43);
+    });
+
+    test('$AA_IW[X] returns the mm axis position as-is in metric mode', () => {
+        getCoordinatesInFrame.mockReturnValue([254, 0, 0]);
+        View.sinumerikView.parseData.unitMult = 1;
+        expect(mathParse('$AA_IW[X]', 'prog', 0)).toBe(254);
+    });
+
+    test('$AA_IW[X] divides by unitMult in inch mode (axesPos is always mm)', () => {
+        getCoordinatesInFrame.mockReturnValue([254, 0, 0]);
+        View.sinumerikView.parseData.unitMult = 25.4;
+        expect(mathParse('$AA_IW[X]', 'prog', 0)).toBe(10);
     });
 });

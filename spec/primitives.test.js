@@ -8,6 +8,7 @@ jest.mock('../lib/sinumerik', () => ({
                 subroutines: [],
                 diamon: 0,
                 diam90: 0,
+                unitMult: 1,
                 transformation: null,
                 mcall: {},
                 frame: {mirror: {X: 1, Y: 1, Z: 1}},
@@ -58,6 +59,7 @@ jest.mock('../lib/stringParse', () => ({
 jest.mock('../lib/utils', () => ({
     normalizeFileName: jest.fn((name) => name.replace(/\./g, '_').toUpperCase()),
     unmaskStringSpaces: jest.fn((str) => str),
+    isLinearAxis: jest.fn((name) => /^[XYZUVW]$/.test(name)),
 }));
 
 jest.mock('../lib/degreesMath', () => ({
@@ -74,6 +76,7 @@ global.atom = {
 };
 
 const {addY_for_C_rot, generatePrimitives, generateCanvasPrimitives} = require('../lib/primitives');
+const {mathParse} = require('../lib/mathParser');
 
 let View;
 
@@ -84,6 +87,7 @@ beforeEach(() => {
     View.sinumerikView.parseData.variables = {firstChannelVariables: {}, PROG: {}};
     View.sinumerikView.parseData.subroutines = [];
     View.sinumerikView.parseData.diamon = 0;
+    View.sinumerikView.parseData.unitMult = 1;
     View.sinumerikView.parseData.transformation = null;
     View.sinumerikView.parseData.mcall = {};
     View.sinumerikView.parseData.frame = {
@@ -234,6 +238,148 @@ describe('generatePrimitives', () => {
         const result = await generatePrimitives('DIAMOF', PROG, 0, prog('DIAMOF'), parseRowsFn);
 
         expect(result.operators[0].type).toBe('diamof');
+    });
+});
+
+// --- unitMult scaling (G70/G71 inch/metric plan) ---
+//
+// unitMult composes with the existing diamon (radius/diameter) factor for X;
+// mathParse-backed leaves (CR/RP/RND/CHR/AR/AP/ANG) are exercised with a
+// mock that evaluates plain numeric literals, since these fields don't use
+// checkCoordinates' own regex parsing.
+
+describe('unitMult scaling', () => {
+    const parseRowsFn = jest.fn();
+    const PROG = 'PROG';
+    const prog = (row) => [row];
+
+    beforeEach(() => {
+        mathParse.mockImplementation((expr) => {
+            const n = parseFloat(expr);
+            return Number.isNaN(n) ? null : n;
+        });
+    });
+
+    test('X coordinate scaled by unitMult (no diamon)', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('X10', PROG, 0, prog('X10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('X coordinate composes diamon (/2) and unitMult (raw/2*25.4)', async () => {
+        View.sinumerikView.parseData.diamon = 1;
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('X10', PROG, 0, prog('X10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(10 / 2 * 25.4);
+    });
+
+    test('Y coordinate scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('Y10', PROG, 0, prog('Y10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('Z coordinate scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('Z10', PROG, 0, prog('Z10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('rotary axis A is not scaled', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('A10', PROG, 0, prog('A10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(10);
+    });
+
+    test('spindle axis (e.g. C1) is not scaled', async () => {
+        View.sinumerikView.singleLineDebugData.machine.firstSpindle.name = 'C1';
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('C110', PROG, 0, prog('C110'), parseRowsFn);
+        View.sinumerikView.singleLineDebugData.machine.firstSpindle.name = 'C';
+
+        expect(result.operators[0].value).toBe(10);
+    });
+
+    test('arc center I is always scaled (linear regardless of axis letter)', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('I10', PROG, 0, prog('I10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('CR is scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('CR=10', PROG, 0, prog('CR=10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('RP is scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('RP=10', PROG, 0, prog('RP=10'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('RND is scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('RND=5', PROG, 0, prog('RND=5'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(5 * 25.4);
+    });
+
+    test('CHR is scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('CHR=3', PROG, 0, prog('CHR=3'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(3 * 25.4);
+    });
+
+    test('AR (angle) is not scaled', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('AR=45', PROG, 0, prog('AR=45'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(45);
+    });
+
+    test('AP (polar angle) is not scaled', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('AP=45', PROG, 0, prog('AP=45'), parseRowsFn);
+
+        expect(result.operators[0].value).toBe(45);
+    });
+
+    test('ANG modificator on a coordinate is not scaled', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('X10 ANG=30', PROG, 0, prog('X10 ANG=30'), parseRowsFn);
+
+        expect(result.operators[0].modificator.ang).toBe(30);
+        expect(result.operators[0].value).toBe(254);
+    });
+
+    test('TRANS shift is scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const {generateFrame} = require('../lib/coordinates');
+        generateFrame.mockClear();
+
+        await generatePrimitives('TRANS X10', PROG, 0, prog('TRANS X10'), parseRowsFn);
+
+        expect(generateFrame.mock.calls[0][2][0].value).toBe(254);
+    });
+
+    test('ROT value is not scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const {generateFrame} = require('../lib/coordinates');
+        generateFrame.mockClear();
+
+        await generatePrimitives('ROT X10', PROG, 0, prog('ROT X10'), parseRowsFn);
+
+        expect(generateFrame.mock.calls[0][2][0].value).toBe(10);
     });
 });
 
