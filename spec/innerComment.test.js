@@ -3,7 +3,8 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: { programmData: {} } }
 }));
 
-const { parseAutoComment } = require('../lib/inner-comment');
+const { parseAutoComment, loadDataFromComment } = require('../lib/inner-comment');
+const View = require('../lib/sinumerik').default;
 
 describe('parseAutoComment', () => {
     let logSpy;
@@ -124,5 +125,55 @@ describe('parseAutoComment', () => {
         const result = parseAutoComment(text);
         expect(result).toEqual({});
         expect(logSpy).toHaveBeenCalledWith('Broken comment');
+    });
+});
+
+// --- loadDataFromComment: machine.units back-compat (G70/G71 inch/metric plan) ---
+
+describe('loadDataFromComment units back-compat', () => {
+    const BEGIN = ';This comment is automatically created by sinumerik-highlight package';
+    const END = ';End of comment created by sinumerik-highlight package';
+
+    const setEditor = (path, text) => {
+        global.atom = {
+            workspace: {
+                getActiveTextEditor: () => ({
+                    getPath: () => path,
+                    getText: () => text,
+                }),
+            },
+        };
+    };
+
+    beforeEach(() => {
+        View.sinumerikView.programmData = {};
+    });
+
+    test('machine without a units field defaults to metric', () => {
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"machine":{"machineName":"OLD_LATHE","machineType":"Lathe"}}',
+            END,
+        ].join('\n');
+        setEditor('/test/old.mpf', text);
+
+        loadDataFromComment();
+
+        expect(View.sinumerikView.programmData['/test/old.mpf'].machine.units).toBe('metric');
+    });
+
+    test('machine with an explicit units field is left untouched', () => {
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"machine":{"machineName":"INCH_LATHE","machineType":"Lathe","units":"inch"}}',
+            END,
+        ].join('\n');
+        setEditor('/test/inch.mpf', text);
+
+        loadDataFromComment();
+
+        expect(View.sinumerikView.programmData['/test/inch.mpf'].machine.units).toBe('inch');
     });
 });
