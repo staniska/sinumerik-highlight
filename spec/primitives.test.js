@@ -348,6 +348,15 @@ describe('unitMult scaling', () => {
         expect(result.operators[0].value).toBe(3 * 25.4);
     });
 
+    test('CHF is tagged as a coordinate/CHF subtype and scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('CHF=3', PROG, 0, prog('CHF=3'), parseRowsFn);
+
+        expect(result.operators[0].type).toBe('coordinate');
+        expect(result.operators[0].subtype).toBe('CHF');
+        expect(result.operators[0].value).toBe(3 * 25.4);
+    });
+
     test('AR (angle) is not scaled', async () => {
         View.sinumerikView.parseData.unitMult = 25.4;
         const result = await generatePrimitives('AR=45', PROG, 0, prog('AR=45'), parseRowsFn);
@@ -558,6 +567,49 @@ describe('RNDM modal rounding', () => {
 
         expect(View.sinumerikView.parseData.canvas).toHaveLength(0);
         expect(View.sinumerikView.parseData.prevMove).toHaveLength(0);
+    });
+});
+
+// --- CHF operator wiring ---
+// The chamfer-diagonal trig conversion itself is covered in
+// spec/elementInsert.test.js; this just checks CHF is threaded through
+// generateCanvasPrimitives the same way RND/CHR already are (move.CHF ->
+// canvasElement.CHF -> prevMove, not pushed straight to canvas).
+
+describe('CHF operator wiring', () => {
+    const PROG = 'PROG';
+
+    const g1Primitives = (x, y, extraOperators = []) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G1'},
+            {type: 'coordinate', name: 'X', value: String(x)},
+            {type: 'coordinate', name: 'Y', value: String(y)},
+            ...extraOperators,
+        ]
+    });
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.rndm = 0;
+    });
+
+    test('a move with an explicit CHF is held in prevMove, not pushed to canvas', () => {
+        const primitives = g1Primitives(10, 5, [{type: 'coordinate', subtype: 'CHF', value: '3'}]);
+        generateCanvasPrimitives(primitives, PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas).toHaveLength(0);
+        expect(View.sinumerikView.parseData.prevMove).toHaveLength(1);
+        expect(View.sinumerikView.parseData.prevMove[0].CHF).toBe(3);
+    });
+
+    test('modal rndm does not override an explicit CHF on the same move', () => {
+        View.sinumerikView.parseData.rndm = 5;
+        const primitives = g1Primitives(10, 5, [{type: 'coordinate', subtype: 'CHF', value: '3'}]);
+        generateCanvasPrimitives(primitives, PROG, 0);
+
+        expect(View.sinumerikView.parseData.prevMove[0].CHF).toBe(3);
+        expect(View.sinumerikView.parseData.prevMove[0].RND).toBeUndefined();
     });
 });
 
