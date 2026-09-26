@@ -11,6 +11,7 @@ jest.mock('../lib/sinumerik', () => ({
 }));
 
 const {parseDefPart, checkDef} = require('../lib/defParser');
+const {maskStringSpaces, STRING_SPACE_SENTINEL} = require('../lib/utils');
 
 // --- parseDefPart ---
 // Pure function: parses a "TYPE name" string into {type, name} or false.
@@ -97,5 +98,25 @@ describe('checkDef', () => {
     test('DEF with inline comment strips comment', () => {
         checkDef('DEF REAL myVar=1.5 ; comment', 'prog', [], 0);
         expect(View.sinumerikView.parseData.variables.prog.myVar.value).toBe(1.5);
+    });
+
+    test('DEF STRING strips surrounding quotes', () => {
+        checkDef('DEF STRING[8] pipka="Popa"', 'prog', [], 0);
+        expect(View.sinumerikView.parseData.variables.prog.pipka).toEqual({
+            name: 'pipka', type: 'string[8]', value: 'Popa'
+        });
+    });
+
+    test('DEF STRING with spaces in the literal keeps the masked sentinel, not a real space', () => {
+        // mirrors how the line actually arrives at checkDef: parseRows runs
+        // maskStringSpaces over the whole program before checkDef ever sees it.
+        const maskedLine = maskStringSpaces('DEF STRING[8] pipka="Po Pa"');
+        checkDef(maskedLine, 'prog', [], 0);
+        expect(View.sinumerikView.parseData.variables.prog.pipka.value).toBe(`Po${STRING_SPACE_SENTINEL}Pa`);
+    });
+
+    test('DEF STRING without an initial value defaults to 0, not a crash', () => {
+        checkDef('DEF STRING[8] pipka', 'prog', [], 0);
+        expect(View.sinumerikView.parseData.variables.prog.pipka.value).toBe(0);
     });
 });
