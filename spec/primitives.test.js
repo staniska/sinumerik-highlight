@@ -333,6 +333,14 @@ describe('unitMult scaling', () => {
         expect(result.operators[0].value).toBe(5 * 25.4);
     });
 
+    test('RNDM is tagged as its own operator type and scaled by unitMult', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const result = await generatePrimitives('RNDM=5', PROG, 0, prog('RNDM=5'), parseRowsFn);
+
+        expect(result.operators[0].type).toBe('RNDM');
+        expect(result.operators[0].value).toBe(5 * 25.4);
+    });
+
     test('CHR is scaled by unitMult', async () => {
         View.sinumerikView.parseData.unitMult = 25.4;
         const result = await generatePrimitives('CHR=3', PROG, 0, prog('CHR=3'), parseRowsFn);
@@ -482,6 +490,74 @@ describe('generateCanvasPrimitives — elementId and sourceFile', () => {
         const firstId  = View.sinumerikView.parseData.canvas[0].elementId;
         const secondId = View.sinumerikView.parseData.canvas.at(-1).elementId;
         expect(firstId).not.toBe(secondId);
+    });
+});
+
+// --- RNDM modal rounding ---
+// parseData.rndm is a modal fallback applied inside generateCanvasPrimitives
+// when a move has neither an explicit RND nor CHR operator. It reuses the
+// existing RND consumption path (prevMove -> insertRnd on the next move),
+// so a "rounded" move never reaches parseData.canvas directly — see
+// primitives.js:576-579.
+
+describe('RNDM modal rounding', () => {
+    const PROG = 'PROG';
+
+    const g1Primitives = (x, y, extraOperators = []) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G1'},
+            {type: 'coordinate', name: 'X', value: String(x)},
+            {type: 'coordinate', name: 'Y', value: String(y)},
+            ...extraOperators,
+        ]
+    });
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.rndm = 0;
+    });
+
+    test('modal rndm applies RND to a move with no explicit RND/CHR', () => {
+        View.sinumerikView.parseData.rndm = 5;
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+
+        expect(View.sinumerikView.parseData.prevMove).toHaveLength(1);
+        expect(View.sinumerikView.parseData.prevMove[0].RND).toBe(5);
+        expect(View.sinumerikView.parseData.canvas).toHaveLength(0);
+    });
+
+    test('rndm = 0 leaves moves unrounded', () => {
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+
+        expect(View.sinumerikView.parseData.prevMove).toHaveLength(0);
+        expect(View.sinumerikView.parseData.canvas).toHaveLength(1);
+        expect(View.sinumerikView.parseData.canvas[0].RND).toBeUndefined();
+    });
+
+    test('an explicit RND on the move wins over the modal value', () => {
+        View.sinumerikView.parseData.rndm = 5;
+        const primitives = g1Primitives(10, 5, [{type: 'coordinate', subtype: 'RND', value: '2'}]);
+        generateCanvasPrimitives(primitives, PROG, 0);
+
+        expect(View.sinumerikView.parseData.prevMove[0].RND).toBe(2);
+    });
+
+    test('an explicit CHR on the move suppresses the modal RND', () => {
+        View.sinumerikView.parseData.rndm = 5;
+        const primitives = g1Primitives(10, 5, [{type: 'coordinate', subtype: 'CHR', value: '2'}]);
+        generateCanvasPrimitives(primitives, PROG, 0);
+
+        expect(View.sinumerikView.parseData.prevMove[0].RND).toBeUndefined();
+        expect(View.sinumerikView.parseData.prevMove[0].CHR).toBe(2);
+    });
+
+    test('a bare RNDM=5 line with no move does not fabricate a canvas element', () => {
+        View.sinumerikView.parseData.rndm = 5;
+        generateCanvasPrimitives({operators: []}, PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas).toHaveLength(0);
+        expect(View.sinumerikView.parseData.prevMove).toHaveLength(0);
     });
 });
 
