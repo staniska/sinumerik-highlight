@@ -13,6 +13,8 @@ UI and syntax highlight colors follow the active Pulsar theme — both light and
 
 Select Lathe or Mill type in the Machine Manager. The selected type affects the DIAMON setting (for lathes) and the default plane (G17 for mill, G18 for lathe).
 
+Existing machines can be edited — including renaming — via the Edit button in the machine's panel; subroutine/snippet folder links and the default-machine flag move with a rename.
+
 Each machine also has a metric/inch unit setting, used as the default when a program has no explicit `G70`/`G71`. Machines created before this setting existed default to metric.
 
 A subroutine folder path can be configured for each machine. The CNC type selector (Sinumerik / FANUC variants) is used by the companion **sinumerik-to-nc** package for G-code translation and has no effect on highlighting or debugging in this package.
@@ -102,8 +104,8 @@ Circular interpolation:
 ### Supported features
 
 - Polar coordinates (AP, RP)
-- Rounding (RND) between two lines or a line and an arc
-- Chamfer (CHR) between lines
+- Rounding between two lines or a line and an arc: one-shot (RND) or modal (RNDM, applies to every following corner until RNDM=0)
+- Chamfer between lines: per-edge trim distance (CHR) or diagonal length (CHF)
 - DIAMON / DIAMOF / DIAM90
 - G70 / G700 (inch) and G71 / G710 (metric) — mid-program unit switching; the machine's own unit setting is the default when neither appears
 - [A]TRANS, [A]ROT & [A]MIRROR
