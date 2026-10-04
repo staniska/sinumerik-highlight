@@ -80,6 +80,17 @@ const JOPA_UNTRIMMED = [
     {id: 8, type: 'line', start: {Z: 49, X: 496}, end: {Z: 49, X: 506}},
 ];
 
+// The same contour with the long outer edge drawn as two collinear segments,
+// which is what splitting an element in the editor leaves behind. The detection
+// reports a change of element at the split, so the chain would carry two
+// branches moving to exactly the same place.
+const JOPA_SPLIT_EDGE = [
+    ...JOPA.slice(0, 7),
+    {id: 7, type: 'line', start: {Z: 19, X: 505}, end: {Z: 34, X: 505}},
+    {id: 9, type: 'line', start: {Z: 34, X: 505}, end: {Z: 49, X: 505}},
+    JOPA[8],
+];
+
 // Outer profile: what a pass has to clear on its way in. Inner profile: where
 // the pass has to stop. The staircase grows monotonically towards Z=0, i.e.
 // towards the direction of machining, so the value at the pass plane is also the
@@ -262,20 +273,26 @@ describe('generated cycle self-check', () => {
         expect(problems).toEqual([]);
     });
 
-    test('flags the one probe an untrimmed contour makes degenerate', () => {
+    test('flags the probes an untrimmed contour makes degenerate', () => {
         const problems = [];
         generate(JOPA_UNTRIMMED, {Z: 64, X: 628}, problems);
 
-        // At Z=49 the untrimmed contour crosses itself: id8's tip reaches R506
-        // and id7 runs past to Z=50, so the scan line there finds R506 and R505
-        // instead of the wall at R496, and the detected cut boundary disagrees
-        // with the cycle by 9 mm. The cycle itself is right — no pass plane
-        // lands on that Z, which the numeric tests above confirm — so this is
-        // the self-check being deliberately conservative: a degenerate contour
-        // gets a question rather than a silent insert.
-        expect(problems).toHaveLength(1);
-        expect(problems[0]).toMatchObject({side: 'cut', at: 49, elementId: 0});
-        expect(problems[0].delta).toBeCloseTo(-9, 9);
+        // All three sit exactly on a vertex, where the scan ray is collinear
+        // with the radial element there and the detection returns a neighbour's
+        // value instead of the wall: Z=49 is id8's tip at R506 with id7 running
+        // past it to Z=50, Z=19 is id6. No pass plane lands on either — the
+        // numeric tests above confirm the cycle itself is right — so this is the
+        // self-check being deliberately conservative: a degenerate contour gets
+        // a question rather than a silent insert. Two of the three only became
+        // visible once the duplicate branches were merged away, because a probe
+        // sitting on a branch threshold is skipped as uninformative.
+        expect(problems).toHaveLength(3);
+        expect(problems.map(p => [p.side, p.at])).toEqual([
+            ['approach', 49],
+            ['cut', 19],
+            ['cut', 49],
+        ]);
+        expect(Math.min(...problems.map(p => p.delta))).toBeCloseTo(-9, 9);
     });
 
     test('catches a chain whose zones are shifted one step deeper', () => {
@@ -340,5 +357,33 @@ describe('generated cycle self-check', () => {
         // A constant-X element holds its value anywhere along Z.
         expect(evaluateGeometry(geometryOf(JOPA, 7), 'X', 'Z', 33)).toBeCloseTo(505, 9);
         expect(evaluateGeometry(equationGeometry(undefined, 'X', 'Z'), 'X', 'Z', 0)).toBeNaN();
+    });
+});
+
+describe('redundant branches', () => {
+    const chains = (contour) => {
+        const lines = generate(contour, {Z: 64, X: 628});
+        return {
+            approach: branches(section(lines, 'JOPA:', 'JOPA_START:')).map(label),
+            cut: branches(section(lines, 'JOPA_START:', 'JOPA_END:')).map(label),
+        };
+    };
+
+    test('an edge drawn as two collinear segments gets one branch', () => {
+        // Without the merge this chain carries `IF R1>34` and `IF R1>19` moving
+        // to the same X=1010, one of them dead weight.
+        expect(chains(JOPA_SPLIT_EDGE)).toEqual(chains(JOPA));
+    });
+
+    test('an untrimmed contour stops emitting the overshoot as its own branch', () => {
+        // id7 overshooting to Z=50 past id8's tip adds a change point at Z=49,
+        // and the zone above it is the same edge as the zone below.
+        expect(chains(JOPA_UNTRIMMED)).toEqual(chains(JOPA));
+    });
+
+    test('branches that differ are all kept', () => {
+        const {approach, cut} = chains(JOPA);
+        expect(approach).toHaveLength(3);
+        expect(cut).toHaveLength(2);
     });
 });
