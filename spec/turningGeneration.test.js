@@ -41,8 +41,11 @@ jest.mock('../lib/createElement', () => ({create_element: jest.fn(() => ({}))}),
 
 const {
     detectProcessingPoints,
+    equationGeometry,
+    evaluateGeometry,
     generateProgramText,
     getContourRange,
+    validateZones,
 } = require('../lib/contourEdit/tools/turning');
 
 const View = require('../lib/sinumerik').default;
@@ -84,7 +87,7 @@ const JOPA_UNTRIMMED = [
 const outerRadius = (Z) => Z > 19 ? 505 : Z > 8 ? 521 : 606;
 const innerRadius = (Z) => Z >= 8 ? 496 : 505 - 1.125 * Z;   // taper (0,505)->(8,496)
 
-const generate = (contour, startPoint) => {
+const generate = (contour, startPoint, problems) => {
     const cRange = getContourRange(contour);
     // Radial passes stepping along Z: ax = X (the cut axis), ax2 = Z.
     // direction.direction is a string in the real event handler.
@@ -101,8 +104,12 @@ const generate = (contour, startPoint) => {
     };
 
     detectProcessingPoints(cRange, direction, 'X', contour);
-    return generateProgramText(direction, 'X', cRange, contour, 'Z', 'X', 'JOPA', false);
+    return generateProgramText(direction, 'X', cRange, contour, 'Z', 'X', 'JOPA', false, problems);
 };
+
+const samples = (side) => View.sinumerikView.contourEditData.points[side];
+const element = (contour, id) => contour.find(el => el.id === id);
+const geometryOf = (contour, id) => equationGeometry(element(contour, id), 'X', 'Z');
 
 const section = (lines, fromLabel, toLabel) => {
     const from = lines.indexOf(fromLabel);
@@ -245,5 +252,93 @@ describe('turning cycle generation on an untrimmed contour', () => {
             // accuracy of the generated cycle, not an artefact of the test.
             expect(Math.abs(diameter - 2 * innerRadius(Z))).toBeLessThan(1e-3);
         });
+    });
+});
+
+describe('generated cycle self-check', () => {
+    test('passes on the contour it was generated from', () => {
+        const problems = [];
+        generate(JOPA, {Z: 64, X: 628}, problems);
+        expect(problems).toEqual([]);
+    });
+
+    test('flags the one probe an untrimmed contour makes degenerate', () => {
+        const problems = [];
+        generate(JOPA_UNTRIMMED, {Z: 64, X: 628}, problems);
+
+        // At Z=49 the untrimmed contour crosses itself: id8's tip reaches R506
+        // and id7 runs past to Z=50, so the scan line there finds R506 and R505
+        // instead of the wall at R496, and the detected cut boundary disagrees
+        // with the cycle by 9 mm. The cycle itself is right — no pass plane
+        // lands on that Z, which the numeric tests above confirm — so this is
+        // the self-check being deliberately conservative: a degenerate contour
+        // gets a question rather than a silent insert.
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).toMatchObject({side: 'cut', at: 49, elementId: 0});
+        expect(problems[0].delta).toBeCloseTo(-9, 9);
+    });
+
+    test('catches a chain whose zones are shifted one step deeper', () => {
+        generate(JOPA, {Z: 64, X: 628});
+        // Exactly the bug this file exists for: each zone paired with the next,
+        // deeper step's element. The fall-through stays correct, which is why the
+        // broken cycle still looked plausible.
+        const shifted = [
+            {threshold: 19, geometry: geometryOf(JOPA, 5), elementId: 5},
+            {threshold: 8, geometry: geometryOf(JOPA, 3), elementId: 3},
+            {threshold: null, geometry: geometryOf(JOPA, 3), elementId: 3},
+        ];
+
+        const problems = validateZones(shifted, samples('processingStart'), 'approach', 'X', 'Z', true);
+
+        expect(problems.length).toBeGreaterThan(500);
+        expect(problems.every(p => p.side === 'approach')).toBe(true);
+        // Nothing below the last step: there the chain happens to be right.
+        expect(problems.every(p => p.at > 8)).toBe(true);
+        // R521 instead of R505 above the first step, R606 instead of R521 between
+        // the steps.
+        const worst = problems.reduce((a, b) => (Math.abs(b.delta) > Math.abs(a.delta) ? b : a));
+        expect(worst.delta).toBeCloseTo(85, 6);
+        expect(Math.min(...problems.map(p => Math.abs(p.delta)))).toBeCloseTo(16, 6);
+    });
+
+    test('reports a zone left without an element', () => {
+        generate(JOPA, {Z: 64, X: 628});
+        const problems = validateZones(
+            [{threshold: null, geometry: null}], samples('processingStart'), 'approach', 'X', 'Z', true);
+
+        expect(problems.length).toBe(samples('processingStart').length);
+        expect(problems[0].elementId).toBeNull();
+        expect(Number.isFinite(problems[0].delta)).toBe(false);
+    });
+
+    test('catches a zone anchored off the profile', () => {
+        generate(JOPA, {Z: 64, X: 628});
+        // The class of bug the shared geometry is meant to make unrepresentable:
+        // the right element, the right angle, an anchor displaced along the cut
+        // axis. The check has to see it, because it reads the same geometry the
+        // program text is formatted from.
+        const correct = geometryOf(JOPA, 7);
+        const displaced = [{
+            threshold: null,
+            geometry: {...correct, anchor: {...correct.anchor, X: correct.anchor.X + 16}},
+            elementId: 7,
+        }];
+
+        const problems = validateZones(displaced, samples('processingStart'), 'approach', 'X', 'Z', true);
+
+        expect(problems.length).toBeGreaterThan(0);
+        expect(Math.abs(problems[0].delta)).toBeGreaterThan(1);
+    });
+
+    test('evaluateGeometry mirrors the emitted equation', () => {
+        // The taper, the one branch of the JOPA cycle that is not a constant:
+        // (8, 496) -> (0, 505), i.e. 505 - 1.125 * Z.
+        expect(evaluateGeometry(geometryOf(JOPA, 1), 'X', 'Z', 0)).toBeCloseTo(505, 9);
+        expect(evaluateGeometry(geometryOf(JOPA, 1), 'X', 'Z', 8)).toBeCloseTo(496, 9);
+        expect(evaluateGeometry(geometryOf(JOPA, 1), 'X', 'Z', 4)).toBeCloseTo(500.5, 9);
+        // A constant-X element holds its value anywhere along Z.
+        expect(evaluateGeometry(geometryOf(JOPA, 7), 'X', 'Z', 33)).toBeCloseTo(505, 9);
+        expect(evaluateGeometry(equationGeometry(undefined, 'X', 'Z'), 'X', 'Z', 0)).toBeNaN();
     });
 });
