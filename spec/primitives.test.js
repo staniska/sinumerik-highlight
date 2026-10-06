@@ -107,6 +107,11 @@ beforeEach(() => {
     View.sinumerikView.parseData.contourElements = {PROG: []};
     View.sinumerikView.parseData.currentBucket = 'PROG';
     View.sinumerikView.parseData.moveGroup = '';
+    // Modal, so it leaks between describe blocks in execution order: the RNDM
+    // and CHF suites leave it at 5, and a later test's move then silently
+    // acquires a fillet, gets deferred to prevMove and never reaches the
+    // canvas at all. Tests that want a non-zero value set it themselves.
+    View.sinumerikView.parseData.rndm = 0;
     View.sinumerikView.programmData = {
         '/test/test.mpf': {machine: {machineType: 'Lathe'}, contour: {name: ''}}
     };
@@ -667,5 +672,85 @@ describe('callStack propagation', () => {
         // No stamp — main-program elements are not inside a subroutine call
         const el = View.sinumerikView.parseData.canvas[0];
         expect(el.callStack).toBeUndefined();
+    });
+});
+
+// Nose arc of a lathe tool outline, in the plane and units such a file is
+// read in: G18, DIAMOF. Two things are pinned here.
+//
+// First, which direction draws the nose. With the centre and both endpoints
+// fixed, G2 and G3 pick opposite sweeps — the 90° one hugging the tool tip,
+// and the 270° one going the long way round. Only the first is a nose, and
+// getting it backwards draws an outline that still declares the right radius,
+// so nothing downstream would complain. spec/fixtures/tools/turn35.mpf relies
+// on this answer.
+//
+// Second, that the arc survives into `contourElements` with its radius. The
+// canvas tessellates every arc into G1 chords (primitives.js:515), so that
+// bucket is the only place the radius still exists — and shapeFile.js's
+// `checkToolConsistency` compares the declared $TC_DP6 against exactly that.
+
+describe('G18 nose arc of a tool outline', () => {
+    const PROG = 'PROG';
+
+    // Tool reference point P at the origin; for cutting-edge position 3 the
+    // nose centre sits at P + (r, r), so the arc runs between the two tangent
+    // points (Z r, X 0) and (Z 0, X r).
+    const NOSE_R = 0.4;
+
+    const drawNose = direction => {
+        const pd = View.sinumerikView.parseData;
+        pd.planeAxes = ['Z', 'X', 'Y'];
+        pd.planeFirstAxes = ['Z', 'X'];
+        pd.planeCircleAxes = ['K', 'I'];
+        pd.axesPos = {X: 0, Y: 0, Z: NOSE_R};
+        pd.moveGroup = direction;
+
+        generateCanvasPrimitives({operators: [
+            {type: 'moveGroup', value: direction},
+            {type: 'coordinate', name: 'Z', value: '0'},
+            {type: 'coordinate', name: 'X', value: String(NOSE_R)},
+            // I/K are incremental from the start point: centre at (Z r, X r).
+            {type: 'circleCenter', name: 'K', value: '0'},
+            {type: 'circleCenter', name: 'I', value: String(NOSE_R)},
+        ]}, PROG, 0);
+
+        const segments = pd.canvas;
+        const middle = segments[Math.floor(segments.length / 2)];
+        return {
+            arc: pd.contourElements.PROG.find(el => el.type === 'arc'),
+            middle,
+            distanceFromTip: Math.hypot(middle.Z, middle.X),
+        };
+    };
+
+    test('G2 sweeps the quarter that hugs the tool tip', () => {
+        const {middle, distanceFromTip} = drawNose('G2');
+
+        // The nose passes within r of the tip; the far sweep is at r*(1+√2).
+        expect(distanceFromTip).toBeLessThan(NOSE_R);
+        expect(middle.Z).toBeLessThan(NOSE_R);
+        expect(middle.X).toBeLessThan(NOSE_R);
+    });
+
+    test('G3 goes the long way round, which is not a nose', () => {
+        const {distanceFromTip} = drawNose('G3');
+        expect(distanceFromTip).toBeGreaterThan(NOSE_R);
+    });
+
+    test('the arc reaches contourElements with its radius and centre intact', () => {
+        // This is the premise of checkToolConsistency: the tessellated canvas
+        // has lost the radius, this bucket has not.
+        const {arc} = drawNose('G2');
+
+        expect(arc).toBeDefined();
+        expect(arc.radius).toBeCloseTo(NOSE_R, 10);
+        // getCoordinatesInBase is mocked to [X, Y, Z] in this suite.
+        expect(arc.center[0]).toBeCloseTo(NOSE_R, 10);
+        expect(arc.center[2]).toBeCloseTo(NOSE_R, 10);
+    });
+
+    test('both sweeps declare the same radius, which is why direction needs its own test', () => {
+        expect(drawNose('G2').arc.radius).toBeCloseTo(drawNose('G3').arc.radius, 10);
     });
 });
