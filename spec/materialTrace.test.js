@@ -664,3 +664,56 @@ describe('intersecting intervals', () => {
         expect(spansLength([])).toBe(0);
     });
 });
+
+describe('skipping columns before converting them', () => {
+    const {sweepSegment, createGrid, seedFromPolygon, getSpans, subtractSpan, maxRadiusIn, sweptBounds} =
+        require('../lib/materialTrace');
+
+    const rect2 = (a0lo, a0hi, a1lo, a1hi) => [
+        [a0lo, a1lo], [a0hi, a1lo], [a0hi, a1hi], [a0lo, a1hi],
+    ];
+
+    test('a rejected column is never handed to the caller', () => {
+        const grid = createGrid({min: 0, max: 20, pitch: 1});
+        seedFromPolygon(grid, rect2(0, 20, 0, 10));
+
+        const seen = [];
+        sweepSegment(grid, rect2(0, 2, 0, 2), [0, 0], [10, 0], i => seen.push(i), i => i % 2 === 0);
+
+        expect(seen.length).toBeGreaterThan(0);
+        expect(seen.every(i => i % 2 === 0)).toBe(true);
+    });
+
+    test('without a predicate every covered column is visited', () => {
+        const grid = createGrid({min: 0, max: 20, pitch: 1});
+        seedFromPolygon(grid, rect2(0, 20, 0, 10));
+
+        const all = [];
+        sweepSegment(grid, rect2(0, 2, 0, 2), [0, 0], [10, 0], i => all.push(i));
+        expect(all.length).toBe(12);
+    });
+
+    test('the max radius per column is what makes such a test cheap', () => {
+        // It is maintained on every write, so asking "could this shape reach any
+        // material here?" costs a comparison instead of a scan conversion.
+        const grid = createGrid({min: 0, max: 10, pitch: 1});
+        seedFromPolygon(grid, rect2(0, 10, 0, 8));
+        expect(maxRadiusIn(grid, 0, 9)).toBeCloseTo(8, 10);
+
+        subtractSpan(grid, 3, 5, 20);
+        expect(grid.maxRadius[3]).toBeCloseTo(5, 10);
+        expect(maxRadiusIn(grid, 3, 3)).toBeCloseTo(5, 10);
+
+        subtractSpan(grid, 3, -5, 20);
+        expect(grid.maxRadius[3]).toBe(-Infinity);
+        expect(maxRadiusIn(grid, 3, 3)).toBe(-Infinity);
+
+        // Out-of-range bounds are clamped rather than read past the end.
+        expect(maxRadiusIn(grid, -50, 500)).toBeCloseTo(8, 10);
+    });
+
+    test('swept bounds cover the outline at both ends of the move', () => {
+        const bounds = sweptBounds(rect2(0, 2, 1, 3), [10, 5], [40, 5]);
+        expect(bounds).toEqual({a0min: 10, a0max: 42, a1min: 6, a1max: 8});
+    });
+});

@@ -30,6 +30,8 @@ const {
     SNAPSHOT_BUDGET_BYTES,
     MAX_SNAPSHOTS,
     UNDO_BUDGET_ENTRIES,
+    COLLISION_GIVEUP,
+    collisionCheckStopped,
 } = require('../lib/materialTraceRun');
 const {getSpans, totalArea} = require('../lib/materialTrace');
 
@@ -1012,5 +1014,53 @@ describe('holder collisions', () => {
 
         expect(rects.length).toBeGreaterThan(0);
         expect(rects.some(r => r.a0hi > cutEdge)).toBe(true);
+    });
+});
+
+describe('a holder that collides everywhere', () => {
+    // A ROLE:body section drawn below the cutting tip strikes on every block. The
+    // report says so hundreds of times over, and carrying on costs ten times the
+    // rest of the trace — 4.8 ms per element against 0.5 for a sound tool. So the
+    // check stops, and records that it did.
+    const belowTip = () => ({
+        sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ],
+    });
+
+    test('the check stops after enough strikes, and says so', () => {
+        setup({toolGeometry: belowTip(), blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 50; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        const st = advanceMaterialTrace(elements, elements.length);
+
+        expect(collisionCheckStopped()).toBe(true);
+        expect(st.collisions.length).toBeLessThan(elements.length);
+        expect(st.collisions.length).toBeGreaterThanOrEqual(COLLISION_GIVEUP);
+    });
+
+    test('a sound tool never trips it', () => {
+        setup({blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 50; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(collisionCheckStopped()).toBe(false);
+    });
+
+    test('rewinding past the point it stopped resumes checking', () => {
+        setup({toolGeometry: belowTip(), blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 50; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(collisionCheckStopped()).toBe(true);
+
+        // Derived from the collision list, so unwinding the list unwinds this
+        // with no flag to remember to reset.
+        advanceMaterialTrace(elements, 5);
+        expect(collisionCheckStopped()).toBe(false);
     });
 });
