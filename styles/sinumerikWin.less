@@ -341,6 +341,10 @@
   // Axes/labels — same hue as syntax text, so they read on any editor background.
   --blank-color: lightgray;
   --contour-color: darkgray;
+  // Stock the tool has removed. Matches the canvas background on purpose, so
+  // the blank is literally erased where the tool has been; a distinct tint here
+  // would instead show cleared stock apart from space that was never blank.
+  --removed-color: white;
   --axes-color: fade(@syntax-text-color, 50%);
   --axes-text-color: fade(@syntax-text-color, 80%);
   & when (lightness(@base-background-color) < 50%) {
