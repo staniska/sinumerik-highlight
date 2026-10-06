@@ -25,6 +25,7 @@ const {
     MATERIAL_TRACE_PITCH,
     SNAPSHOT_BUDGET_BYTES,
     MAX_SNAPSHOTS,
+    UNDO_BUDGET_ENTRIES,
 } = require('../lib/materialTraceRun');
 const {getSpans, totalArea} = require('../lib/materialTrace');
 
@@ -541,5 +542,137 @@ describe('keyframes earn their keep', () => {
         const st = advanceMaterialTrace(els, els.length);
         expect(st.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
         expect(st.snapshotEvery).toBeGreaterThan(1);
+    });
+});
+
+describe('stepping back one element at a time', () => {
+    beforeEach(() => setup());
+
+    // ArrowLeft is pressed repeatedly, and with keyframes alone each press
+    // restored the nearest one and replayed up to `snapshotEvery` elements —
+    // paying that cost again on every press. The undo log makes a step cost
+    // what the element cost: ten presses measured at 15 ms against ~130 ms.
+    const passes = () => {
+        const els = [];
+        for (let p = 0; p < 6; p++) {
+            const r = 9 - p;
+            for (let k = 0; k < 10; k++) els.push(g1(18 - (k * 16) / 10, r, 18 - ((k + 1) * 16) / 10, r));
+        }
+        return els;
+    };
+
+    test('a record is kept for every element that cut something', () => {
+        const els = passes();
+        const st = advanceMaterialTrace(els, els.length);
+
+        expect(st.undo.length).toBe(els.length);
+        expect(st.undoEntries).toBeGreaterThan(0);
+        expect(st.undo[st.undo.length - 1].at).toBe(els.length - 1);
+    });
+
+    test('an element that cut nothing leaves no record', () => {
+        setup({toolGeometry: null});
+        const st = advanceMaterialTrace(passes(), 5);
+        expect(st.undo.length).toBe(0);
+    });
+
+    test('a step back is undone, not replayed', () => {
+        const els = passes();
+        advanceMaterialTrace(els, els.length);
+
+        const before = materialTraceState().swept;
+        advanceMaterialTrace(els, els.length - 1);
+
+        // Nothing was swept again: the previous spans were simply put back.
+        expect(materialTraceState().swept).toBe(before - 1);
+        expect(materialTraceState().undo.length).toBe(els.length - 1);
+    });
+
+    test('ten steps back do not sweep anything at all', () => {
+        const els = passes();
+        advanceMaterialTrace(els, els.length);
+        const before = materialTraceState().swept;
+
+        for (let k = 1; k <= 10; k++) advanceMaterialTrace(els, els.length - k);
+
+        expect(materialTraceState().swept).toBe(before - 10);
+        expect(materialTraceState().appliedUpTo).toBe(els.length - 10);
+    });
+
+    test('undoing restores exactly the material that was there', () => {
+        // The property the whole log rests on: an undone element leaves the
+        // grid byte-for-byte as it was before it ran.
+        const els = passes();
+        advanceMaterialTrace(els, 40);
+        const at40 = totalArea(materialTraceState().grid);
+        const rectsAt40 = materialTraceRects().length;
+
+        advanceMaterialTrace(els, 55);
+        advanceMaterialTrace(els, 40);
+
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(at40, 9);
+        expect(materialTraceRects().length).toBe(rectsAt40);
+        expect(materialTraceState().removed).toBeGreaterThan(0);
+    });
+
+    test('removed length is unwound along with the material', () => {
+        const els = passes();
+        advanceMaterialTrace(els, 20);
+        const removedAt20 = materialTraceState().removed;
+
+        advanceMaterialTrace(els, 30);
+        advanceMaterialTrace(els, 20);
+
+        expect(materialTraceState().removed).toBeCloseTo(removedAt20, 9);
+    });
+
+    test('restoring a keyframe drops the log, since it no longer ends where we are', () => {
+        const els = passes();
+        advanceMaterialTrace(els, els.length);
+
+        // Rewinding past the log forces the keyframe path.
+        materialTraceState().undo = materialTraceState().undo.slice(-2);
+        materialTraceState().undoEntries = 2;
+        advanceMaterialTrace(els, 5);
+
+        const st = materialTraceState();
+        expect(st.appliedUpTo).toBe(5);
+        // Whatever is in the log now was recorded while replaying forward from
+        // the keyframe, so it still ends exactly where we are.
+        if (st.undo.length) expect(st.undo[st.undo.length - 1].at).toBe(4);
+    });
+
+    test('the log stays within its entry budget', () => {
+        const st = advanceMaterialTrace(passes(), 60);
+        expect(st.undoEntries).toBeLessThanOrEqual(UNDO_BUDGET_ENTRIES);
+    });
+});
+
+describe('undoing an element that cut a column more than once', () => {
+    // Only the FIRST touch of a column may be recorded. Recording every touch
+    // captures the state left by the element's own earlier cuts, so undoing
+    // restores a half-cut column and quietly loses material. One cutting
+    // section with one span per column never exercises that — two overlapping
+    // sections do.
+    const twoSections = () => ({
+        sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 3), g1(2, 3, 0, 3), g1(0, 3, 0, 0)], elements: []},
+            {role: 'cut', shapes: [g1(0, 2, 2, 2), g1(2, 2, 2, 6), g1(2, 6, 0, 6), g1(0, 6, 0, 2)], elements: []},
+        ],
+    });
+
+    test('undoing restores the column completely, not just the last cut', () => {
+        setup({toolGeometry: twoSections()});
+        const elements = [g1(14, 4, 6, 4)];
+
+        advanceMaterialTrace(elements, 0);
+        const seeded = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(elements, 1);
+        expect(totalArea(materialTraceState().grid)).toBeLessThan(seeded);
+
+        advanceMaterialTrace(elements, 0);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(seeded, 9);
+        expect(materialTraceRects()).toEqual([]);
     });
 });
