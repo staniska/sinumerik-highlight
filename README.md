@@ -92,6 +92,33 @@ Every line of the block is prefixed with `;` so the block is inert at the machin
 
 Default values from the body's `IF/ENDIF` chain must be duplicated at the top of the bounding block — local `DEF` variables aren't visible because the body hasn't run yet. Calls inside `WHILE` / `FOR` / `REPEAT` are refused to keep the result unambiguous.
 
+### Sectioned shape files (fixtures and tools)
+
+Fixtures (chuck, steady rest) and tool outlines are plain G-code files split into coloured sections:
+
+```
+;NAME:TURN35 COLOR:#3b7dd8
+;---VARIABLES
+; T103 R0.4
+; $TC_DP10=80
+;---SECTION COLOR:#d8a13b ROLE:cut
+G0 X0 Z0
+G1 X-10 Z0
+;---SECTION COLOR:#888888 ROLE:body
+G0 X-10 Z-5
+G1 X-30 Z-5
+```
+
+- `;NAME:` names the file and colours section 0. `COLOR:` is optional everywhere (default `#3b7dd8`).
+- `;---SECTION` starts a section. `ROLE:` is `cut` (the cutting edge, which legitimately removes material), `body` (holder — anything it touches is a collision) or `ignore`. **A section without `ROLE:` counts as `body`**: a missing role then shows a false collision, which is visible and fixable, rather than a false all-clear.
+- `;---VARIABLES` is optional and holds tool data as commented `KEY=VALUE` lines, so the block stays inert at the machine. `T10X R..` is shorthand for `$TC_DP2` and `$TC_DP6`. Keys are not validated against a list, values are converted to numbers only where they are used, and an index is optional (`$TC_DP6` and `$TC_DP6[1]` are the same field). No field is required — the outline alone is enough to draw a file.
+- The leading `G0` of each section is the approach to its first point and is not drawn, as for `BLANK`/`CONTOUR`.
+- Each section is parsed in isolation and inherits the program's plane, so a lathe outline (`G18`) lines up with the trajectory it rides on. It does **not** inherit `TRANS`/`MIRROR`/`ROT` or an active `G41`/`G42`: the file is drawn in its own coordinates.
+
+**Tool files are measured and written in radii (`DIAMOF`)**, not in diameters — a tool has no diametral feature, its zero is the tool reference point and its dimensions are local, so a 0.4 mm nose radius is written as `R0.4` and a 10 mm flank as `X-10`. Fixtures are different: they are drawn in machine coordinates and follow the program's diameter mode, so their `X` is a diameter on a lathe.
+
+Zero in a tool file is the **reference point of the compensation system** — the imaginary sharp tip for cutting-edge positions 1…8, the nose centre for a round insert (position 9). That is the point which rides along the trajectory, and it must be the same point any hand-computed radius compensation in the program was measured from.
+
 ### Interpolation
 
 Linear interpolation is supported including the ANG modifier.
