@@ -48,6 +48,7 @@ function makeParseData() {
         currentBucket: 'MAIN_MPF',
         activeTool: 103,
         activeToolR: 0.4,
+        activeToolDef: {name: 'TURN35', path: '/t/turn35.mpf'},
         toolRadiusCompensation: 'G41',
         offn: 0.2,
         spindleSpeed: {type: 'G96', value: 200, limit: 3000},
@@ -129,6 +130,7 @@ function trashEverything(pd) {
     pd.currentBucket = 'SHAPEFILE_1_0';
     pd.activeTool = 0;
     pd.activeToolR = 0;
+    pd.activeToolDef = {name: 'OTHER', path: '/t/other.mpf'};
     pd.toolRadiusCompensation = 'G42';
     pd.offn = 7;
     pd.spindleSpeed = {type: 'G97', value: 1, limit: 20000};
@@ -255,6 +257,22 @@ describe('what the mini-parse starts from', () => {
 
         expect(pd.toolRadiusCompensation).toBe('G40');
         expect(pd.offn).toBe(0);
+    });
+
+    test('no active tool: a ;TOOL: line inside the file cannot replace it', () => {
+        // The file is geometry, not a tool change. Without this, a `;TOOL:`
+        // line that found its way into a shape file would swap the tool of the
+        // program being debugged — and the restore would put the program's own
+        // tool back, so the corruption would last exactly as long as the
+        // mini-parse and be invisible afterwards.
+        const pd = makeParseData();
+        expect(pd.activeToolDef).toEqual({name: 'TURN35', path: '/t/turn35.mpf'});
+
+        const backup = borrowParseState(pd, createCanvas);
+        expect(pd.activeToolDef).toBeNull();
+
+        returnParseState(pd, backup, 'SHAPEFILE_1_0');
+        expect(pd.activeToolDef).toEqual({name: 'TURN35', path: '/t/turn35.mpf'});
     });
 
     test('no carried-over fillet state', () => {
