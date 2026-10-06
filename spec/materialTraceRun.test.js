@@ -32,6 +32,8 @@ const {
     UNDO_BUDGET_ENTRIES,
     COLLISION_GIVEUP,
     collisionCheckStopped,
+    materialTraceReport,
+    describeMaterialTrace,
 } = require('../lib/materialTraceRun');
 const {getSpans, totalArea} = require('../lib/materialTrace');
 
@@ -1062,5 +1064,147 @@ describe('a holder that collides everywhere', () => {
         // with no flag to remember to reset.
         advanceMaterialTrace(elements, 5);
         expect(collisionCheckStopped()).toBe(false);
+    });
+});
+
+describe('saying what was and was not checked', () => {
+    // The point of the whole report: a feature whose job is catching crashes must
+    // never let "nothing was hit" and "could not be checked" look the same.
+    const part = () => bar(0, 20, 5);
+
+    const withPart = (options = {}) => {
+        setup(options);
+        View.sinumerikView.parseData.contour = options.contour === null ? [] : (options.contour ?? part());
+        resetMaterialTrace();
+    };
+
+    const text = () => describeMaterialTrace().join(' | ');
+
+    test('a sound run says so, with a count', () => {
+        withPart();
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        const r = materialTraceReport();
+        expect(r.verdict).toBe('clean');
+        expect(r.checked).toBe(1);
+        expect(text()).toMatch(/1 block\(s\) checked: nothing cut into the part, nothing hit the holder/);
+    });
+
+    test('a block with no tool outline is never counted as clean', () => {
+        // The failure this exists to prevent: no geometry means no checks, which
+        // would otherwise read as "nothing happened".
+        withPart({toolGeometry: null});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        const r = materialTraceReport();
+        expect(r.verdict).toBe('partial');
+        expect(r.skippedTool).toBe(1);
+        expect(text()).toMatch(/NOT checked/);
+        expect(text()).not.toMatch(/nothing cut into the part/);
+    });
+
+    test('a block in another plane is also a gap, not a pass', () => {
+        withPart();
+        advanceMaterialTrace([g1(18, 8, 2, 8, {workPlane: 'G17'})], 1);
+
+        expect(materialTraceReport().verdict).toBe('partial');
+        expect(text()).toMatch(/another plane .* NOT checked/);
+    });
+
+    test('without a contour it says gouges cannot be detected', () => {
+        withPart({contour: null});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        const r = materialTraceReport();
+        expect(r.partKnown).toBe(false);
+        expect(r.verdict).toBe('partial');
+        expect(text()).toMatch(/No CONTOUR/);
+    });
+
+    test('a gouge is reported with its depth, place and line', () => {
+        withPart();
+        advanceMaterialTrace([{...g1(18, 3, 2, 3), row: 11, sourceFile: 'MAIN_MPF'}], 1);
+
+        const r = materialTraceReport();
+        expect(r.verdict).toBe('damage');
+        expect(r.gouges.count).toBe(1);
+        expect(text()).toMatch(/CUT INTO THE PART in 1 block\(s\)/);
+        expect(text()).toMatch(/mm radial/);
+        expect(text()).toMatch(/row 12/);            // rows are shown 1-based
+    });
+
+    test('a radial position is shown as a diameter when the program works in diameters', () => {
+        // X is held in radii all the way through, so a position shown to the
+        // operator has to be doubled back. A factor of two in a gouge report is
+        // exactly what would destroy trust in it.
+        withPart();
+        View.sinumerikView.parseData.diamon = 1;
+        resetMaterialTrace();
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+
+        // The gouge reaches radius 3, so the diameter is 6 — assert the number,
+        // not just the symbol, because the symbol appears either way.
+        expect(text()).toMatch(/⌀6\.000/);
+
+        View.sinumerikView.parseData.diamon = 0;
+        resetMaterialTrace();
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+        expect(text()).not.toMatch(/⌀/);
+        expect(text()).toMatch(/X3\.000/);
+    });
+
+    test('a holder strike outranks a gouge in the report', () => {
+        // A gouge spoils the part; a holder strike breaks the machine.
+        withPart({toolGeometry: {sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ]}});
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+
+        const lines = describeMaterialTrace();
+        expect(lines[0]).toMatch(/HOLDER HIT STOCK/);
+        expect(lines.some(l => /CUT INTO THE PART/.test(l))).toBe(true);
+    });
+
+    test('a stopped holder check says later blocks are not checked', () => {
+        setup({toolGeometry: {sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ]}, blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 20; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+
+        expect(materialTraceReport().collisions.stopped).toBe(true);
+        expect(text()).toMatch(/Holder checking stopped/);
+        expect(text()).toMatch(/NOT checked/);
+    });
+
+    test('nothing to say when there is no trace', () => {
+        resetMaterialTrace();
+        expect(materialTraceReport().verdict).toBe('off');
+        expect(describeMaterialTrace()).toEqual([]);
+    });
+
+    test('a mill and a missing blank each explain themselves', () => {
+        withPart({machineType: 'Mill'});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+        expect(text()).toMatch(/lathe programs only/);
+
+        withPart({blank: []});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+        expect(text()).toMatch(/no BLANK/);
+    });
+
+    test('the verdict follows a rewind', () => {
+        withPart();
+        const elements = [g1(18, 8, 10, 8), g1(10, 3, 2, 3)];
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceReport().verdict).toBe('damage');
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceReport().verdict).toBe('clean');
     });
 });

@@ -1150,6 +1150,32 @@
 .sinumerikSLDColorLine--g41 { background: greenyellow; }
 .sinumerikSLDColorLine--g42 { background: springgreen; }
 
+// Material-trace legend. Colours come from the same CSS variables the WebGL
+// renderer reads, so the key cannot drift from the picture. The cut-away swatch
+// gets a border because it is the canvas background colour and would otherwise
+// be invisible.
+.sinumerikSLDColorLine--trace-removed {
+  background: var(--removed-color, white);
+  box-shadow: 0 0 0 1px @sin-border;
+}
+.sinumerikSLDColorLine--trace-gouge { background: var(--gouge-color, crimson); }
+.sinumerikSLDColorLine--trace-crash { background: var(--crash-color, darkviolet); }
+
+// single-line-debug.js :: updateMaterialTraceStatus
+.sinumerikSLDTraceStatus {
+  white-space: pre-line;
+  padding: 2px 4px;
+  border-left: 3px solid @sin-border;
+  color: @sin-text-subtle;
+
+  &--hidden { display: none; }
+  // Coloured by verdict, not by wording: a run with gaps must not look like a
+  // clean one at a glance.
+  &--clean   { border-left-color: @sin-text-success; }
+  &--partial { border-left-color: @sin-text-warning; color: @sin-text; }
+  &--damage  { border-left-color: @sin-text-error; color: @sin-text; }
+}
+
 .sinumerikSLDInlineLabel {
   float: left;
   margin: 5px;
