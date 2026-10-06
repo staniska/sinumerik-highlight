@@ -348,6 +348,9 @@
   // Stock taken out of the FINISHED PART. Drawn over the cleared area because it
   // is a subset of it: erasing stock is routine, eating the part is not.
   --gouge-color: crimson;
+  // Where the HOLDER met stock that was still there. Above everything: a gouge
+  // spoils the part, a holder strike breaks the machine.
+  --crash-color: darkviolet;
   --axes-color: fade(@syntax-text-color, 50%);
   --axes-text-color: fade(@syntax-text-color, 80%);
   & when (lightness(@base-background-color) < 50%) {

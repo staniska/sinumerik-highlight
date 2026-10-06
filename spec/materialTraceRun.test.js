@@ -19,6 +19,8 @@ const {
     materialTraceRects,
     materialTraceGougeRects,
     worstGouge,
+    materialTraceCollisionRects,
+    worstCollision,
     elementsToPolygon,
     sectionToPolygon,
     noseFromSections,
@@ -838,5 +840,177 @@ describe('gouges into the finished part', () => {
         expect(materialTraceState().gouges.length).toBeGreaterThan(1);
         const depths = materialTraceState().gouges.map(g => g.depth);
         expect(worstGouge().depth).toBeCloseTo(Math.max(...depths), 10);
+    });
+});
+
+describe('holder collisions', () => {
+    // A tool built the way a real one is: an insert at the reference point and a
+    // shank trailing it along +a0.
+    //
+    // `a1` grows AWAY from the spindle axis, so a shank above the tip is in air
+    // and can never be the dangerous one. The holder that bites is the one
+    // reaching BELOW the tip, towards the axis — a negative `shankLo`, which is
+    // the real failure: a holder not set back far enough.
+    const withShank = (shankLo = 0, shankHi = 6) => ({
+        sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [
+                g1(2, shankLo, 12, shankLo), g1(12, shankLo, 12, shankHi),
+                g1(12, shankHi, 2, shankHi), g1(2, shankHi, 2, shankLo),
+            ], elements: []},
+        ],
+    });
+
+    const longBlank = () => bar(0, 60, 10);
+
+    test('an ordinary pass is clean, though the shank follows through the same block', () => {
+        // The trap this check is built around. The shank trails the insert, so
+        // within one block it travels through stock the insert cleared moments
+        // earlier — in that very block. Judged against the material as it stood
+        // before the block, every normal cut would report a collision.
+        //
+        // The pass starts at a0 58 so the shank (which sits +2..+12 behind the
+        // reference point) begins clear of the 60 mm blank. Starting further in
+        // would bury it in stock before the tool even moves, which is a genuine
+        // collision and a different test.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        const st = advanceMaterialTrace([g1(58, 8, 10, 8)], 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.collisions).toEqual([]);
+        expect(worstCollision()).toBeNull();
+        expect(materialTraceCollisionRects()).toEqual([]);
+    });
+
+    test('a shank reaching below the tip ploughs through stock', () => {
+        // Riding at radius 8 the insert cuts 8..10; a shank hanging 2 mm below
+        // the tip spans 6..14, and 6..8 is metal the edge never touches.
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        const st = advanceMaterialTrace([g1(58, 8, 10, 8)], 1);
+
+        expect(st.collisions.length).toBeGreaterThan(0);
+        expect(worstCollision().depth).toBeGreaterThan(0);
+        expect(materialTraceCollisionRects().length).toBeGreaterThan(0);
+    });
+
+    test('the report says which line did it and where', () => {
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        const elements = [{...g1(58, 8, 10, 8), row: 77, sourceFile: 'SUB_SPF'}];
+        advanceMaterialTrace(elements, 1);
+
+        const worst = worstCollision();
+        expect(worst.row).toBe(77);
+        expect(worst.sourceFile).toBe('SUB_SPF');
+        expect(worst.Z).toBeGreaterThan(0);
+        expect(Number.isFinite(worst.X)).toBe(true);
+    });
+
+    test('a shank leading into untouched stock does collide', () => {
+        // Travelling the other way the shank runs ahead of the edge, and the
+        // stretch beyond the edge's own sweep is material nothing has cleared.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        const st = advanceMaterialTrace([g1(10, 8, 30, 8)], 1);
+
+        expect(st.collisions.length).toBeGreaterThan(0);
+    });
+
+    test('a shank leading into stock an earlier block cleared does not', () => {
+        // The reason the check has to be sequential: a holder is allowed
+        // anywhere the tool has already been. Same move as above, after a pass
+        // that cleared the ground it runs onto.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        const elements = [g1(58, 8, 5, 8), g1(10, 8, 30, 8)];
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().collisions).toEqual([]);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().collisions).toEqual([]);
+    });
+
+    test('an ignored section never collides, even hanging below the tip', () => {
+        // Shaped exactly like the shank that does collide, so the test turns on
+        // the role and nothing else. An ignore section sitting in clear air
+        // above the tip would pass whether the role were honoured or not.
+        setup({toolGeometry: {sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'ignore', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ]}, blank: longBlank()});
+        const st = advanceMaterialTrace([g1(58, 8, 10, 8)], 1);
+
+        expect(st.collisions).toEqual([]);
+
+        // ...whereas the same shape as a holder does collide.
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        expect(advanceMaterialTrace([g1(58, 8, 10, 8)], 1).collisions.length).toBeGreaterThan(0);
+    });
+
+    test('a section with no ROLE: collides, because the default is body', () => {
+        // Fail-safe: a forgotten role shows a false collision, which is visible
+        // and fixable, rather than a false all-clear in a feature whose purpose
+        // is catching crashes.
+        setup({toolGeometry: {sections: [
+            {role: 'body', shapes: [g1(0, 0, 10, 0), g1(10, 0, 10, 8), g1(10, 8, 0, 8), g1(0, 8, 0, 0)], elements: []},
+        ]}, blank: longBlank()});
+        const st = advanceMaterialTrace([g1(40, 2, 20, 2)], 1);
+
+        expect(st.removed).toBe(0);                 // nothing is marked as cutting
+        expect(st.collisions.length).toBeGreaterThan(0);
+    });
+
+    test('a tool with no holder skips the extra sweep entirely', () => {
+        setup();                                     // the default fixture is cut-only
+        const st = advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect(st.hasBody).toBe(false);
+        expect(st.collisions).toEqual([]);
+    });
+
+    test('rewinding unwinds collisions with the material', () => {
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        const elements = [g1(55, 9, 50, 9), g1(50, 8, 20, 8)];
+
+        advanceMaterialTrace(elements, 1);
+        const quiet = materialTraceState().collisions.length;
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().collisions.length).toBeGreaterThan(quiet);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().collisions.length).toBe(quiet);
+    });
+
+    test('a keyframe carries the collisions', () => {
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        // The priming blocks run at radius 12, clear of the 10 mm blank, so the
+        // only collision in the program is the plunge at the end.
+        const elements = [];
+        for (let k = 0; k < 40; k++) elements.push(g1(58 - k * 0.1, 12, 57.9 - k * 0.1, 12));
+        elements.push(g1(50, 8, 20, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().collisions.length).toBeGreaterThan(0);
+
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(elements, 10);
+
+        expect(materialTraceState().appliedUpTo).toBe(10);
+        expect(materialTraceState().collisions).toEqual([]);
+    });
+
+    test('collided columns beyond the cut range are still painted', () => {
+        // A holder can hit stock the tool never touched — that is the point — so
+        // the rectangles cannot be limited to the columns that were cut. Here the
+        // insert sweeps to about a0 42 while the shank reaches 52.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        advanceMaterialTrace([g1(40, 8, 30, 8)], 1);
+
+        const st = materialTraceState();
+        const cutEdge = st.grid.min + (st.touchedMax + 1) * st.grid.pitch;
+        const rects = materialTraceCollisionRects();
+
+        expect(rects.length).toBeGreaterThan(0);
+        expect(rects.some(r => r.a0hi > cutEdge)).toBe(true);
     });
 });
