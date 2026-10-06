@@ -22,6 +22,9 @@ const {
     noseFromSections,
     resolveCompensation,
     subtractSpansFrom,
+    MATERIAL_TRACE_PITCH,
+    SNAPSHOT_BUDGET_BYTES,
+    MAX_SNAPSHOTS,
 } = require('../lib/materialTraceRun');
 const {getSpans, totalArea} = require('../lib/materialTrace');
 
@@ -392,5 +395,151 @@ describe('cost of drawing the trace', () => {
         const second = materialTraceRects();
         expect(second).not.toBe(first);
         expect(second.length).toBeGreaterThan(0);
+    });
+});
+
+describe('scrubbing the progress bar', () => {
+    beforeEach(() => setup());
+
+    // Clicking the bar or holding ArrowLeft is a first-class interaction
+    // (lib/progressBar.js), and advancing is subtractive, so going back means
+    // restoring an earlier state. Keyframes are what keep that from replaying
+    // the whole program on every keypress — measured at 15 s before they
+    // existed, against single-digit milliseconds with them.
+    const manyPasses = () => {
+        const els = [];
+        for (let p = 0; p < 8; p++) {
+            const r = 9 - p;
+            for (let k = 0; k < 10; k++) els.push(g1(18 - (k * 16) / 10, r, 18 - ((k + 1) * 16) / 10, r));
+        }
+        return els;
+    };
+
+    test('keyframes are laid down while advancing', () => {
+        const els = manyPasses();
+        const st = advanceMaterialTrace(els, els.length);
+
+        expect(st.snapshots.length).toBeGreaterThan(1);
+        // One at the blank itself, so any rewind has a floor to land on.
+        expect(st.snapshots[0].at).toBe(0);
+        expect(st.snapshotEvery).toBeGreaterThanOrEqual(1);
+    });
+
+    test('going back lands on a keyframe instead of rebuilding from the blank', () => {
+        const els = manyPasses();
+        advanceMaterialTrace(els, els.length);
+        const grid = materialTraceState().grid;
+
+        advanceMaterialTrace(els, els.length - 1);
+
+        // Same grid object: the state was restored in place, not rebuilt.
+        expect(materialTraceState().grid).toBe(grid);
+        expect(materialTraceState().appliedUpTo).toBe(els.length - 1);
+    });
+
+    test('a jump forward also uses a keyframe rather than replaying from here', () => {
+        const els = manyPasses();
+        advanceMaterialTrace(els, els.length);
+        const atEnd = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(els, 0);
+        expect(materialTraceState().appliedUpTo).toBe(0);
+
+        advanceMaterialTrace(els, els.length);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(atEnd, 9);
+    });
+
+    test('scrubbing back and forth gives the same material as going straight there', () => {
+        // The property the keyframes rely on: the material after N elements
+        // depends only on the first N, not on the route taken.
+        const els = manyPasses();
+        const target = 37;
+
+        advanceMaterialTrace(els, target);
+        const direct = totalArea(materialTraceState().grid);
+        const directRects = materialTraceRects().length;
+
+        resetMaterialTrace();
+        advanceMaterialTrace(els, els.length);
+        advanceMaterialTrace(els, 5);
+        advanceMaterialTrace(els, els.length - 2);
+        advanceMaterialTrace(els, target);
+
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(direct, 9);
+        expect(materialTraceRects().length).toBe(directRects);
+    });
+
+    test('keyframe memory stays within its budget', () => {
+        const els = manyPasses();
+        const st = advanceMaterialTrace(els, els.length);
+
+        const bytes = st.snapshots.length
+            * (st.grid.starts.byteLength + st.grid.ends.byteLength + st.grid.counts.byteLength);
+        expect(st.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
+        expect(bytes).toBeLessThanOrEqual(SNAPSHOT_BUDGET_BYTES);
+    });
+
+    test('the working pitch is coarse enough to keep up, and exact radially regardless', () => {
+        // 7.8 ms per element at 0.01 mm froze the UI; 0.46 ms at 0.2 mm does
+        // not. Cost is linear in 1/pitch, and only the axial direction is
+        // discretised.
+        const st = advanceMaterialTrace(manyPasses(), 1);
+        expect(st.grid.pitch).toBeCloseTo(MATERIAL_TRACE_PITCH, 10);
+        expect(MATERIAL_TRACE_PITCH).toBeGreaterThanOrEqual(0.1);
+    });
+});
+
+describe('keyframes earn their keep', () => {
+    beforeEach(() => setup());
+
+    const passes = n => {
+        const els = [];
+        for (let p = 0; p < n; p++) {
+            const r = 9 - (p % 8);
+            for (let k = 0; k < 8; k++) els.push(g1(18 - (k * 16) / 8, r, 18 - ((k + 1) * 16) / 8, r));
+        }
+        return els;
+    };
+
+    test('a jump forward sweeps a fraction of the program, not all of it again', () => {
+        // Without the forward shortcut the result would be identical and only
+        // the cost would differ — which is why this counts work instead of
+        // comparing material.
+        const els = passes(8);
+        advanceMaterialTrace(els, els.length);
+        advanceMaterialTrace(els, 0);
+
+        const before = materialTraceState().swept;
+        advanceMaterialTrace(els, els.length);
+        const done = materialTraceState().swept - before;
+
+        expect(done).toBeLessThanOrEqual(materialTraceState().snapshotEvery);
+        expect(done).toBeLessThan(els.length);
+    });
+
+    test('a step back sweeps almost nothing', () => {
+        const els = passes(8);
+        advanceMaterialTrace(els, els.length);
+
+        const before = materialTraceState().swept;
+        advanceMaterialTrace(els, els.length - 1);
+        const done = materialTraceState().swept - before;
+
+        // At worst a replay from the nearest keyframe to one element short of
+        // where we were — bounded by the keyframe spacing, never by the
+        // program length. Before keyframes existed this was the whole program,
+        // measured at 15 s.
+        expect(done).toBeLessThanOrEqual(materialTraceState().snapshotEvery);
+    });
+
+    test('past the cap the spacing doubles instead of the memory growing', () => {
+        // 64 elements with a small grid asks for one keyframe per element, which
+        // overruns the cap and must thin out rather than keep allocating.
+        const els = passes(8);
+        expect(els.length).toBe(64);
+
+        const st = advanceMaterialTrace(els, els.length);
+        expect(st.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
+        expect(st.snapshotEvery).toBeGreaterThan(1);
     });
 });
