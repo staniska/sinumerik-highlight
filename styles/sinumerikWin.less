@@ -988,6 +988,15 @@
 // single-line-debug.js: foot divs
 .sinumerikSLDFootDiv {
   flex-shrink: 0;
+  // The foot is a fixed share of the panel height and clips what overflows, so
+  // its contents go side by side: the trace status takes the width this box has
+  // always had going spare, and the legend keeps its place on the right.
+  // Stacking them instead pushed the box past its allowance, which clipped the
+  // last legend row and slid the canvas out from under its own axes.
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: hidden;
 }
 
 
@@ -1132,6 +1141,20 @@
 .sinumerikSLDHelpDiv {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+// One row for the whole material-trace key, rather than a row per colour.
+.sinumerikSLDTraceKey {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .sinumerikSLDColorLine {
+    float: none;
+    margin: 0;
+  }
 }
 
 .sinumerikSLDHelpText {
@@ -1163,6 +1186,18 @@
 
 // single-line-debug.js :: updateMaterialTraceStatus
 .sinumerikSLDTraceStatus {
+  // Takes the spare width and scrolls rather than growing: the lines are
+  // ordered worst-first, so the one that matters is always the one on show.
+  //
+  // The cap is in em rather than a percentage because the box it sits in has an
+  // auto height — a percentage would resolve against nothing and let the text
+  // push the foot past the share of the panel it is allowed, which is what
+  // clipped the legend in the first place. Five lines is about the height of the
+  // legend beside it.
+  flex: 1;
+  min-width: 0;
+  max-height: 5em;
+  overflow-y: auto;
   white-space: pre-line;
   padding: 2px 4px;
   border-left: 3px solid @sin-border;
