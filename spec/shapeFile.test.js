@@ -14,8 +14,10 @@ const {
     lookupVariable,
     numericVariable,
     describeShapeFileWarnings,
+    checkToolConsistency,
     DEFAULT_SECTION_COLOR,
     DEFAULT_SECTION_ROLE,
+    NOSE_RADIUS_TOLERANCE,
 } = require('../lib/shapeFile');
 
 const TOOL_FILE = [
@@ -304,6 +306,87 @@ describe('index-insensitive lookup', () => {
         expect(lookupVariable({}, '$TC_DP6')).toBeUndefined();
         expect(numericVariable({}, '$TC_DP6')).toBeUndefined();
         expect(numericVariable(undefined, '$TC_DP6')).toBeUndefined();
+    });
+});
+
+describe('declared tool data against the drawn outline', () => {
+    // A mismatch here is otherwise invisible: the outline is drawn from the
+    // geometry while the compensation numbers come from the declaration, so
+    // the two describe different tools in silence and the painted material
+    // boundary ends up off by the difference.
+    const cut = (...radii) => [{
+        role: 'cut',
+        elements: radii.map(radius => ({type: 'arc', radius, center: [0, 0, 0]})),
+    }];
+
+    test('a matching nose radius says nothing', () => {
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, cut(0.4))).toEqual([]);
+    });
+
+    test('a mismatch is reported with both values', () => {
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, cut(0.8))).toEqual([
+            {kind: 'noseRadiusMismatch', declared: 0.4, drawn: 0.8},
+        ]);
+    });
+
+    test('rounding in the drawing does not nag, a wrong insert does', () => {
+        // Stock nose radii step by 0.2 mm, so the tolerance has room to sit
+        // well below that while absorbing drawing rounding.
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, cut(0.4 + NOSE_RADIUS_TOLERANCE / 2))).toEqual([]);
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, cut(0.6))).toHaveLength(1);
+        expect(NOSE_RADIUS_TOLERANCE).toBeLessThan(0.2 / 2);
+    });
+
+    test('the nose is the smallest arc, not the first one', () => {
+        // A tool outline carries other curves (a chamfered flank, a holder
+        // fillet); the nose is the tightest by construction.
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, cut(12, 0.4, 3))).toEqual([]);
+    });
+
+    test('an indexed declaration is honoured', () => {
+        expect(checkToolConsistency({'$TC_DP6[1]': '0.4'}, cut(0.4))).toEqual([]);
+    });
+
+    test('nothing declared, nothing checked', () => {
+        // Variables are optional — the outline alone is a usable file.
+        expect(checkToolConsistency({}, cut(0.8))).toEqual([]);
+    });
+
+    test('a sharp nose drawn with straight lines only is not a contradiction', () => {
+        const lines = [{role: 'cut', elements: [{type: 'line'}, {type: 'line'}]}];
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, lines)).toEqual([]);
+    });
+
+    test('a declared radius with no cutting section is reported', () => {
+        // The default role is `body`, so forgetting ROLE:cut yields a tool
+        // that collides everywhere and cuts nothing.
+        const body = [{role: 'body', elements: [{type: 'arc', radius: 0.4}]}];
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, body)).toEqual([
+            {kind: 'noCutSection', declared: 0.4},
+        ]);
+    });
+
+    test('arcs outside the cutting section are ignored', () => {
+        const mixed = [
+            {role: 'cut', elements: [{type: 'arc', radius: 0.4}]},
+            {role: 'body', elements: [{type: 'arc', radius: 0.05}]},
+        ];
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, mixed)).toEqual([]);
+    });
+
+    test('degenerate radii do not become the nose', () => {
+        const withZero = [{
+            role: 'cut',
+            elements: [{type: 'arc', radius: 0}, {type: 'arc', radius: NaN}, {type: 'arc', radius: 0.4}],
+        }];
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, withZero)).toEqual([]);
+    });
+
+    test('missing sections or elements are survivable', () => {
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, undefined)).toEqual([
+            {kind: 'noCutSection', declared: 0.4},
+        ]);
+        expect(checkToolConsistency({'$TC_DP6': '0.4'}, [{role: 'cut'}])).toEqual([]);
     });
 });
 

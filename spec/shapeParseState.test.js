@@ -14,7 +14,7 @@ const {
     borrowParseState,
     returnParseState,
     isShapeGeometry,
-    dropLeadingRapid,
+    hasLeadingRapid,
     BORROWED_FIELDS,
     INHERITED_FIELDS,
 } = require('../lib/shapeParseState');
@@ -333,24 +333,24 @@ describe('selecting drawable geometry', () => {
     });
 });
 
-describe('dropping the leading rapid', () => {
-    test('a leading G0 approach is removed', () => {
-        const shapes = [{type: 'G0'}, {type: 'G1', id: 1}, {type: 'G1', id: 2}];
-        expect(dropLeadingRapid(shapes)).toEqual([{type: 'G1', id: 1}, {type: 'G1', id: 2}]);
+describe('detecting the leading rapid', () => {
+    test('a section opening with a rapid is recognised', () => {
+        expect(hasLeadingRapid([{type: 'G0'}, {type: 'G1'}, {type: 'G1'}])).toBe(true);
     });
 
-    test('a section opening with G1 keeps all its edges', () => {
-        // Unconditional .slice(1) here would thin such an outline by one edge.
-        const shapes = [{type: 'G1', id: 1}, {type: 'G1', id: 2}];
-        expect(dropLeadingRapid(shapes)).toEqual(shapes);
+    test('a section opening with G1 is not', () => {
+        // The caller drops nothing in this case. An unconditional .slice(1)
+        // would thin such an outline by one edge.
+        expect(hasLeadingRapid([{type: 'G1', id: 1}, {type: 'G1', id: 2}])).toBe(false);
     });
 
-    test('only the first rapid goes', () => {
-        const shapes = [{type: 'G0', id: 0}, {type: 'G0', id: 1}, {type: 'G1', id: 2}];
-        expect(dropLeadingRapid(shapes)).toEqual([{type: 'G0', id: 1}, {type: 'G1', id: 2}]);
+    test('only the first element is consulted', () => {
+        // A rapid in the middle of a section stays: it is part of the drawing,
+        // not an approach to it.
+        expect(hasLeadingRapid([{type: 'G1'}, {type: 'G0'}])).toBe(false);
     });
 
     test('an empty section is not an error', () => {
-        expect(dropLeadingRapid([])).toEqual([]);
+        expect(hasLeadingRapid([])).toBe(false);
     });
 });

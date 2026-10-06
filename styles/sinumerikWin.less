@@ -854,6 +854,53 @@
   box-shadow: 0 0 3px fade(@sin-text, 40%);
 }
 
+// tools.js
+.sinumerik-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 280px;
+}
+
+.sinumerik-tools-close-button {
+  position: absolute;
+  top: -40px;
+  right: -50px;
+  border-radius: 50%;
+  height: 31px;
+  width: 31px;
+  padding: 5px 6px;
+}
+
+.sinumerik-tools-close-button:hover {
+  box-shadow: 0 0 3px fade(@sin-text, 40%);
+}
+
+.sinumerik-tools-machine {
+  color: @sin-text-subtle;
+  padding-bottom: 6px;
+  border-bottom: 1px solid @sin-border;
+  margin-bottom: 6px;
+}
+
+.sinumerik-tools-element {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+
+  &:hover {
+    background-color: @sin-highlight-bg;
+  }
+}
+
+.sinumerik-tools-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .editContourElement_short {
   background-color: @sin-error-bg;
 }
