@@ -632,3 +632,35 @@ describe('sweeping an outline', () => {
         expect(totalArea(grid)).toBeCloseTo(before, 10);
     });
 });
+
+describe('intersecting intervals', () => {
+    const {intersectSpans, spansLength} = require('../lib/materialTrace');
+
+    test('overlapping parts only', () => {
+        expect(intersectSpans([[0, 10]], [[4, 20]])).toEqual([[4, 10]]);
+        expect(intersectSpans([[0, 10]], [[0, 10]])).toEqual([[0, 10]]);
+    });
+
+    test('one interval against several', () => {
+        expect(intersectSpans([[0, 10]], [[1, 2], [5, 6], [9, 20]])).toEqual([[1, 2], [5, 6], [9, 10]]);
+    });
+
+    test('several against several, walked in one pass', () => {
+        expect(intersectSpans([[0, 3], [6, 9]], [[2, 7], [8, 12]])).toEqual([[2, 3], [6, 7], [8, 9]]);
+    });
+
+    test('touching at a point is not an overlap', () => {
+        expect(intersectSpans([[0, 5]], [[5, 10]])).toEqual([]);
+    });
+
+    test('disjoint or empty gives nothing', () => {
+        expect(intersectSpans([[0, 2]], [[5, 7]])).toEqual([]);
+        expect(intersectSpans([], [[0, 10]])).toEqual([]);
+        expect(intersectSpans([[0, 10]], [])).toEqual([]);
+    });
+
+    test('total length', () => {
+        expect(spansLength([[0, 2], [5, 9]])).toBeCloseTo(6, 10);
+        expect(spansLength([])).toBe(0);
+    });
+});

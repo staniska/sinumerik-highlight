@@ -17,6 +17,8 @@ const {
     materialTraceState,
     advanceMaterialTrace,
     materialTraceRects,
+    materialTraceGougeRects,
+    worstGouge,
     elementsToPolygon,
     sectionToPolygon,
     noseFromSections,
@@ -674,5 +676,167 @@ describe('undoing an element that cut a column more than once', () => {
         advanceMaterialTrace(elements, 0);
         expect(totalArea(materialTraceState().grid)).toBeCloseTo(seeded, 9);
         expect(materialTraceRects()).toEqual([]);
+    });
+});
+
+describe('gouges into the finished part', () => {
+    // The part is a shaft of radius 5 inside a blank of radius 10, so anything
+    // the tool takes below radius 5 is a gouge.
+    const part = () => bar(0, 20, 5);
+
+    const cutTo = radius => [g1(18, radius, 2, radius)];
+
+    const setupWithPart = (options = {}) => {
+        setup(options);
+        View.sinumerikView.parseData.contour = options.contour === null ? [] : (options.contour ?? part());
+        resetMaterialTrace();
+    };
+
+    test('a cut that stops above the part is not a gouge', () => {
+        setupWithPart();
+        // The tool square is 2 tall sitting at radius 6, so it reaches down to 6.
+        const st = advanceMaterialTrace(cutTo(6), 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+        expect(worstGouge()).toBeNull();
+    });
+
+    test('a cut reaching into the part is a gouge, with a depth in millimetres', () => {
+        setupWithPart();
+        // Sitting at radius 3 the outline spans 3..5, so it eats 2 mm of part.
+        const st = advanceMaterialTrace(cutTo(3), 1);
+
+        expect(st.gouges).toHaveLength(1);
+        const worst = worstGouge();
+        expect(worst.depth).toBeCloseTo(2, 6);
+        expect(materialTraceGougeRects().length).toBeGreaterThan(0);
+    });
+
+    test('the report says which line did it', () => {
+        setupWithPart();
+        const elements = [{...cutTo(3)[0], row: 42, sourceFile: 'MAIN_MPF'}];
+        advanceMaterialTrace(elements, 1);
+
+        const worst = worstGouge();
+        expect(worst.row).toBe(42);
+        expect(worst.sourceFile).toBe('MAIN_MPF');
+        // And where to look: axial position and the radius reached.
+        expect(worst.Z).toBeGreaterThan(0);
+        expect(worst.X).toBeCloseTo(3, 6);
+    });
+
+    test('the gouged area is the removed material inside the part, and no more', () => {
+        setupWithPart();
+        // The outline is 2 mm tall and the reference point rides at radius 4, so
+        // it spans 4..6 and straddles the part boundary at 5: half of what it
+        // takes is legitimate stock, half is the part.
+        advanceMaterialTrace(cutTo(4), 1);
+
+        const gougeArea = materialTraceGougeRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+        const removedArea = materialTraceRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+
+        expect(gougeArea).toBeGreaterThan(0);
+        expect(gougeArea).toBeLessThan(removedArea);
+        expect(gougeArea / removedArea).toBeCloseTo(0.5, 2);
+        expect(worstGouge().depth).toBeCloseTo(1, 6);
+    });
+
+    test('a trajectory inside the part is not by itself a gouge', () => {
+        // The case the plan singles out: with the compensation worked out by
+        // hand the programmed line runs inside the part on every finishing
+        // block. Judging by the path would light up the whole program; only the
+        // swept material counts.
+        setupWithPart();
+
+        // The line runs at radius 4 — inside the part — while the outline sits
+        // above it and takes nothing below 5.
+        const alongInside = [{...g1(18, 4, 2, 4), toolDef: {name: 'T', path: TOOL_PATH}}];
+        setup({toolGeometry: {sections: [{
+            role: 'cut',
+            // Outline from +1 to +3 above the reference point: the tool body is
+            // entirely outside the part while its zero rides inside it.
+            shapes: [g1(0, 1, 2, 1), g1(2, 1, 2, 3), g1(2, 3, 0, 3), g1(0, 3, 0, 1)],
+            elements: [],
+        }]}});
+        View.sinumerikView.parseData.contour = part();
+        resetMaterialTrace();
+
+        const st = advanceMaterialTrace(alongInside, 1);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('with no contour the question cannot be answered, and that is recorded', () => {
+        // Not the same as "no gouges": without a finished part there is nothing
+        // to compare against, and stage 7 has to be able to say so.
+        setupWithPart({contour: null});
+        const st = advanceMaterialTrace(cutTo(3), 1);
+
+        expect(st.partKnown).toBe(false);
+        expect(st.gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('rewinding unwinds the gouges with the material', () => {
+        setupWithPart();
+        const elements = [g1(18, 6, 10, 6), g1(10, 3, 2, 3)];
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().gouges).toEqual([]);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().gouges).toHaveLength(1);
+        expect(materialTraceGougeRects().length).toBeGreaterThan(0);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('re-cutting air already gouged does not report it twice', () => {
+        // Only material actually taken counts, so a second pass through the
+        // same space has nothing left to remove.
+        setupWithPart();
+        const elements = [g1(18, 3, 2, 3), g1(2, 3, 18, 3)];
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().gouges).toHaveLength(1);
+    });
+
+    test('a keyframe carries the gouges, so rewinding past the log clears them', () => {
+        // The undo path covers short steps; a long rewind lands on a keyframe
+        // instead. If the keyframe did not carry the gouge list, a gouge would
+        // survive a rewind to before the element that caused it — reported
+        // against material that is back in place.
+        setupWithPart();
+        const elements = [];
+        for (let k = 0; k < 40; k++) elements.push(g1(18 - k * 0.4, 7, 17.6 - k * 0.4, 7));
+        elements.push(g1(10, 3, 2, 3));          // the gouging block, last
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().gouges).toHaveLength(1);
+
+        // Force the keyframe path rather than the undo log.
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(elements, 10);
+
+        expect(materialTraceState().appliedUpTo).toBe(10);
+        expect(materialTraceState().gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('the deepest gouge is the one reported', () => {
+        setupWithPart();
+        const elements = [g1(18, 4, 10, 4), g1(10, 1, 2, 1)];
+        advanceMaterialTrace(elements, 2);
+
+        expect(materialTraceState().gouges.length).toBeGreaterThan(1);
+        const depths = materialTraceState().gouges.map(g => g.depth);
+        expect(worstGouge().depth).toBeCloseTo(Math.max(...depths), 10);
     });
 });

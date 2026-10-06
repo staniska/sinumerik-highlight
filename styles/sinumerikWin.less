@@ -345,6 +345,9 @@
   // the blank is literally erased where the tool has been; a distinct tint here
   // would instead show cleared stock apart from space that was never blank.
   --removed-color: white;
+  // Stock taken out of the FINISHED PART. Drawn over the cleared area because it
+  // is a subset of it: erasing stock is routine, eating the part is not.
+  --gouge-color: crimson;
   --axes-color: fade(@syntax-text-color, 50%);
   --axes-text-color: fade(@syntax-text-color, 80%);
   & when (lightness(@base-background-color) < 50%) {
