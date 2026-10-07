@@ -20,6 +20,7 @@ const {
     materialTracePartialRects,
     toolReferenceSegment,
     toolReferencePoint,
+    toolPositionAt,
     materialTraceGougeRects,
     worstGouge,
     worstOffContour,
@@ -1711,6 +1712,55 @@ describe('approaching and leaving a compensated contour', () => {
             [{...elements[0]}, {...g1(40, 20, 20, 20), toolRadiusCompensation: 'G42'}], 0);
         expect(cp.to[0]).toBeCloseTo(ownWay.to[0], 9);
         expect(cp.to[1]).toBeCloseTo(ownWay.to[1], 9);
+    });
+
+    test('the tool is drawn where the material is taken from, not on the line', () => {
+        // The picture and the cut have to come from one formula. Under G41/G42
+        // the programmed line is the finished surface, and the tool stands a
+        // nose radius off it — drawing it on the line left it hanging in the
+        // air beside the material it had just removed.
+        withPart();
+        const elements = program();
+        const cp = referencePointOf(elements, 1);
+        const where = toolPositionAt(elements, 1, 1);
+
+        expect(where.Z).toBeCloseTo(cp.to[0], 9);
+        expect(where.X).toBeCloseTo(cp.to[1], 9);
+        expect(where.X).not.toBeCloseTo(elements[1].X, 6);   // not the programmed point
+        expect(where.Y).toBe(0);                             // the axis out of the plane
+
+        // And on a block whose offset lies along the other axis, so that both
+        // coordinates are covered: facing shifts X, turning shifts Z.
+        const turning = [{...g1(40, 25, 20, 25), toolRadiusCompensation: 'G42'}];
+        const along = toolPositionAt(turning, 0, 1);
+        const path = referencePointOf(turning, 0);
+        expect(along.Z).toBeCloseTo(path.to[0], 9);
+        expect(along.Z).not.toBeCloseTo(turning[0].Z, 6);
+        expect(along.X).toBeCloseTo(path.to[1], 9);
+    });
+
+    test('part way through a block it is part way along the reference path', () => {
+        withPart();
+        const elements = program();
+        const cp = referencePointOf(elements, 0);
+        const half = toolPositionAt(elements, 0, 0.5);
+
+        expect(half.Z).toBeCloseTo((cp.from[0] + cp.to[0]) / 2, 9);
+        expect(half.X).toBeCloseTo((cp.from[1] + cp.to[1]) / 2, 9);
+    });
+
+    test('a plane the compensation is not modelled in keeps the programmed point', () => {
+        // Milling: no privileged pair of axes, and under G40 the reference point
+        // IS the programmed point.
+        withPart();
+        const milled = {...g1(55, 20, 40, 20), workPlane: 'G17'};
+        const where = toolPositionAt([milled], 0, 1);
+        expect(where).toEqual({X: 20, Y: 0, Z: 40});
+    });
+
+    test('a block with no geometry has no position', () => {
+        expect(toolPositionAt([{type: 'msg', value: 'hi'}], 0, 1)).toBeNull();
+        expect(toolPositionAt([], 0, 1)).toBeNull();
     });
 
     test('a departure leaves from where the contour ended', () => {
