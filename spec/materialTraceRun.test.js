@@ -21,6 +21,7 @@ const {
     toolReferenceSegment,
     toolReferencePoint,
     toolPositionAt,
+    noseOf,
     materialTraceGougeRects,
     worstGouge,
     worstOffContour,
@@ -153,6 +154,70 @@ describe('the nose circle', () => {
             {type: 'arc', radius: 0.6, center: [0.6, 0, 0.6]},
         ]}];
         expect(noseFromSections(sections, 'Z', 'X').radius).toBeCloseTo(0.6, 10);
+    });
+});
+
+describe('where the nose circle is', () => {
+    // A tool file carries the numbers the control itself uses: $TC_DP6 is the
+    // nose radius and $TC_DP2 the cutting-edge position. Together they say where
+    // the centre lies relative to the tool's zero point — which is the point the
+    // file is drawn about and the control compensates about.
+    const declared = (variables, sections = toolGeometry().sections) => ({variables, sections});
+
+    test('the declared numbers place the centre, radius and all', () => {
+        // ROMB_2_4_RIGHT, from the user's machine: `; T103 R2.4`.
+        const nose = noseOf(declared({$TC_DP2: '3', $TC_DP6: '2.4'}), 'Z', 'X');
+        expect(nose).toEqual({center: [2.4, 2.4], radius: 2.4});
+    });
+
+    test('each position puts it somewhere else', () => {
+        const at = (sl) => noseOf(declared({$TC_DP2: String(sl), $TC_DP6: '2'}), 'Z', 'X').center;
+        expect(at(1)).toEqual([-2, -2]);
+        expect(at(7)).toEqual([2, 0]);
+        expect(at(9)).toEqual([0, 0]);
+    });
+
+    test('indexed spellings are the same field', () => {
+        // `$TC_DP2[1]` and `$TC_DP2` mean the same while D-numbers are out of
+        // scope, which is what the file format already assumes.
+        const nose = noseOf(declared({'$TC_DP2[1]': '3', '$TC_DP6[1]': '2.4'}), 'Z', 'X');
+        expect(nose.center).toEqual([2.4, 2.4]);
+    });
+
+    test('without them the drawing answers, as before', () => {
+        // The fixture tool draws a 0.4 nose centred at (0.4, 0.4).
+        expect(noseOf(declared({}), 'Z', 'X')).toEqual({center: [0.4, 0.4], radius: 0.4});
+        expect(noseOf(declared(undefined), 'Z', 'X')).toEqual({center: [0.4, 0.4], radius: 0.4});
+    });
+
+    test('a declaration that is not one of the nine falls back to the drawing', () => {
+        expect(noseOf(declared({$TC_DP2: '0', $TC_DP6: '2.4'}), 'Z', 'X').radius).toBe(0.4);
+        expect(noseOf(declared({$TC_DP6: '2.4'}), 'Z', 'X').radius).toBe(0.4);
+        expect(noseOf(declared({$TC_DP2: '3'}), 'Z', 'X').radius).toBe(0.4);
+    });
+
+    test('a plane the table does not speak for falls back to the drawing', () => {
+        // The positions are defined in the turning plane. In any other the
+        // numbers mean nothing, and guessing would be worse than the drawing.
+        const sections = [{
+            role: 'cut',
+            shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)],
+            elements: [{type: 'arc', radius: 0.4, center: [0.4, 0.9, 0.4]}],
+        }];
+        const nose = noseOf(declared({$TC_DP2: '3', $TC_DP6: '2.4'}, sections), 'Y', 'Z');
+        expect(nose).toEqual({center: [0.9, 0.4], radius: 0.4});
+    });
+
+    test('the declaration moves the reference point with it', () => {
+        // The whole point: the compensation is about the declared centre.
+        setup({toolGeometry: {variables: {$TC_DP2: '3', $TC_DP6: '2.4'}, sections: toolGeometry().sections}});
+        const block = [{...g1(40, 20, 20, 20), toolRadiusCompensation: 'G42'}];
+        const cp = toolReferenceSegment(block, 0, 'Z', 'X');
+
+        // G42 travelling -Z puts the nose centre a radius outward, and the zero
+        // point is offset from that centre by the cutting-edge position.
+        expect(cp.from[0]).toBeCloseTo(40 - 2.4, 9);
+        expect(cp.from[1]).toBeCloseTo(20 + 2.4 - 2.4, 9);
     });
 });
 
