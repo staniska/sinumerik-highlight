@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -217,5 +217,90 @@ describe('extractBoundingContourBlock', () => {
             ';G1 X=10',
         ];
         expect(extractBoundingContourBlock(lines)).toBeNull();
+    });
+});
+
+describe('buildAnimationPieces', () => {
+    const move = (zs, z) => ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z});
+
+    test('every piece says which program block it came from', () => {
+        const canvas = [move(0, 100), move(100, 101), move(101, 300)];
+        const {elements, frameOf, endFracOf} = buildAnimationPieces(canvas);
+
+        expect(elements.length).toBe(canvas.reduce((n, el) => n + subdivideElement(el).length, 0));
+        expect(frameOf.length).toBe(elements.length);
+        expect(endFracOf.length).toBe(elements.length);
+
+        // Monotone, starts at the first block, ends at the last, and covers all.
+        expect(frameOf[0]).toBe(0);
+        expect(frameOf[frameOf.length - 1]).toBe(canvas.length - 1);
+        frameOf.forEach((f, i) => expect(f).toBeGreaterThanOrEqual(i ? frameOf[i - 1] : 0));
+        expect(new Set(frameOf).size).toBe(canvas.length);
+    });
+
+    test('the last piece of a block ends at the end of it', () => {
+        const canvas = [move(0, 100), move(100, 300)];
+        const {frameOf, endFracOf} = buildAnimationPieces(canvas);
+
+        frameOf.forEach((f, i) => {
+            const last = i === frameOf.length - 1 || frameOf[i + 1] !== f;
+            if (last) expect(endFracOf[i]).toBeCloseTo(1, 12);
+            else expect(endFracOf[i]).toBeLessThan(1);
+        });
+    });
+
+    test('a fraction grows evenly across a block', () => {
+        const {endFracOf, frameOf} = buildAnimationPieces([move(0, 100)]);
+        const n = frameOf.length;
+        endFracOf.forEach((f, i) => expect(f).toBeCloseTo((i + 1) / n, 12));
+    });
+
+    test('msg and pause blocks stay whole', () => {
+        const canvas = [{type: 'msg', value: 'hi'}, move(0, 100), {type: 'pause', value: 'M0'}];
+        const {elements, frameOf, endFracOf} = buildAnimationPieces(canvas);
+
+        expect(elements[0]).toBe(canvas[0]);
+        expect(frameOf[0]).toBe(0);
+        expect(endFracOf[0]).toBe(1);
+        expect(elements[elements.length - 1]).toBe(canvas[2]);
+        expect(endFracOf[endFracOf.length - 1]).toBe(1);
+    });
+
+    test('a short move is one piece, and an empty program is empty', () => {
+        expect(buildAnimationPieces([move(0, 0.5)]).elements.length).toBe(1);
+        expect(buildAnimationPieces([]).elements).toEqual([]);
+        expect(buildAnimationPieces(undefined).frameOf).toEqual([]);
+    });
+});
+
+describe('traceFrameTarget', () => {
+    // Two blocks: the first cut into 3 pieces, the second into 2.
+    const frameOf    = [0, 0, 0, 1, 1];
+    const endFracOf  = [1 / 3, 2 / 3, 1, 0.5, 1];
+    const target = (pieceLimit) => traceFrameTarget(frameOf, endFracOf, pieceLimit, 2);
+
+    test('nothing drawn, nothing owed and nothing shown', () => {
+        expect(target(0)).toEqual({limit: 0, partial: null});
+    });
+
+    test('a block part way through is shown, not applied', () => {
+        expect(target(1)).toEqual({limit: 0, partial: {index: 0, fraction: 1 / 3}});
+        expect(target(2)).toEqual({limit: 0, partial: {index: 0, fraction: 2 / 3}});
+    });
+
+    test('its last piece applies it, and nothing is left to show', () => {
+        expect(target(3)).toEqual({limit: 1, partial: null});
+    });
+
+    test('the last block of the program applies on its last piece too', () => {
+        expect(target(4)).toEqual({limit: 1, partial: {index: 1, fraction: 0.5}});
+        expect(target(5)).toEqual({limit: 2, partial: null});
+    });
+
+    test('without the mapping, pieces are blocks', () => {
+        expect(traceFrameTarget(null, null, 2, 7)).toEqual({limit: 2, partial: null});
+        expect(traceFrameTarget(null, null, 9, 7)).toEqual({limit: 7, partial: null});
+        // A stale mapping is no mapping: lengths that disagree are not trusted.
+        expect(traceFrameTarget([0, 0], [1], 1, 2)).toEqual({limit: 1, partial: null});
     });
 });

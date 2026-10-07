@@ -38,6 +38,7 @@ const {
     KEYFRAME_WORK_SHARE,
     materialTraceReport,
     describeMaterialTrace,
+    setPartialFrame,
 } = require('../lib/materialTraceRun');
 const {getSpans, totalArea} = require('../lib/materialTrace');
 
@@ -365,6 +366,127 @@ describe('rectangles for the renderer', () => {
 
     test('no state, no rectangles', () => {
         resetMaterialTrace();
+        expect(materialTraceRects()).toEqual([]);
+    });
+});
+
+describe('the block being animated, shown without being applied', () => {
+    beforeEach(() => {
+        setup();
+        setPartialFrame(null);
+    });
+    afterEach(() => setPartialFrame(null));
+
+    const pass = [g1(18, 8, 2, 8)];
+
+    test('half a pass paints about half of what the whole pass removes', () => {
+        advanceMaterialTrace(pass, 1);
+        const whole = materialTraceRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+
+        setup();
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.5});
+        const half = materialTraceRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+
+        // The tool trails its outline behind the cutting point, so half the
+        // travel is a bit more than half the swept area, never less and never
+        // the whole of it.
+        expect(half).toBeGreaterThan(whole * 0.45);
+        expect(half).toBeLessThan(whole);
+    });
+
+    test('showing the block changes nothing in the grid', () => {
+        const st = advanceMaterialTrace(pass, 0);
+        const before = totalArea(st.grid);
+
+        setPartialFrame({index: 0, fraction: 0.6});
+        expect(materialTraceRects().length).toBeGreaterThan(0);
+
+        expect(totalArea(st.grid)).toBeCloseTo(before, 9);
+        expect(st.removed).toBe(0);
+        expect(st.swept).toBe(0);
+        expect(st.undo.length).toBe(0);
+    });
+
+    test('a block already applied is not painted twice', () => {
+        advanceMaterialTrace(pass, 1);
+        const applied = materialTraceRects();
+
+        setPartialFrame({index: 0, fraction: 0.5});
+        expect(materialTraceRects()).toBe(applied);
+    });
+
+    test('nothing shown at the very start of a block, or with no partial frame', () => {
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0});
+        expect(materialTraceRects()).toEqual([]);
+        setPartialFrame(null);
+        expect(materialTraceRects()).toEqual([]);
+    });
+
+    test('moving through the block rebuilds the picture, standing still does not', () => {
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.3});
+        const first = materialTraceRects();
+        expect(materialTraceRects()).toBe(first);
+
+        setPartialFrame({index: 0, fraction: 0.4});
+        const second = materialTraceRects();
+        expect(second).not.toBe(first);
+        expect(second.length).toBeGreaterThan(0);
+    });
+
+    test('what is shown is a subset of what the block goes on to remove', () => {
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.7});
+        const shown = materialTraceRects();
+
+        advanceMaterialTrace(pass, 1);
+        setPartialFrame(null);
+        const applied = materialTraceRects();
+
+        const covered = (r) => applied.some(a =>
+            a.a0lo <= r.a0lo + 1e-9 && a.a0hi >= r.a0hi - 1e-9
+            && a.a1lo <= r.a1lo + 1e-9 && a.a1hi >= r.a1hi - 1e-9);
+        expect(shown.length).toBeGreaterThan(0);
+        expect(shown.every(covered)).toBe(true);
+    });
+
+    test('only material still there is painted, not ground already cut', () => {
+        // The same pass twice: the second takes nothing, so there is nothing to
+        // show for it however far into it the animation is.
+        const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
+        advanceMaterialTrace(twice, 1);
+        const applied = materialTraceRects();
+
+        setPartialFrame({index: 1, fraction: 0.5});
+        const shown = materialTraceRects();
+        expect(shown.length).toBe(applied.length);
+        expect(shown).toEqual(applied);
+    });
+
+    test('a deeper second pass shows only what is left, not the whole depth', () => {
+        // Against the blank instead of the material this would paint from the
+        // outside surface down, and every roughing pass would look like a
+        // full-depth cut.
+        const deeper = [g1(18, 5, 2, 5), g1(18, 4, 2, 4)];
+        advanceMaterialTrace(deeper, 1);
+        const applied = materialTraceRects();
+
+        setPartialFrame({index: 1, fraction: 0.5});
+        const shown = materialTraceRects().slice(applied.length);
+
+        expect(shown.length).toBeGreaterThan(0);
+        // The first pass took 5…7, so the second can only find 4…5 still there.
+        shown.forEach(r => expect(r.a1hi).toBeLessThanOrEqual(5 + 1e-6));
+    });
+
+    test('a block with no tool outline shows nothing', () => {
+        setup({toolGeometry: null});
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.5});
         expect(materialTraceRects()).toEqual([]);
     });
 });
