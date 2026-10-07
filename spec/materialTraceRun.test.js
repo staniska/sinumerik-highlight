@@ -18,6 +18,8 @@ const {
     advanceMaterialTrace,
     materialTraceRects,
     materialTracePartialRects,
+    toolReferenceSegment,
+    toolReferencePoint,
     materialTraceGougeRects,
     worstGouge,
     worstOffContour,
@@ -1619,6 +1621,113 @@ describe('reporting damage', () => {
 
         advanceMaterialTrace(elements, 1);
         expect(describeMaterialTrace()).toEqual([]);
+    });
+});
+
+describe('approaching and leaving a compensated contour', () => {
+    const referencePointOf = (elements, index) => toolReferenceSegment(elements, index, 'Z', 'X');
+
+    // The shape of the user's program: the approach runs along one axis and the
+    // first contour block along the other. The control (NORM) finishes the
+    // approach standing normal to the CONTOUR, so that block starts tangent.
+    //
+    // Modelled on a flange: a face at Z 40 with the part behind it, and stock
+    // to clear in front of it.
+    const nosedOutline = (r, segments = 24) => {
+        const points = [[r, 0]];
+        for (let k = 1; k <= segments; k++) {
+            const a = (Math.PI / 2) * (k / segments);
+            points.push([r - r * Math.sin(a), r - r * Math.cos(a)]);
+        }
+        points.push([0, 8], [8, 8], [8, 0]);
+
+        const shapes = [];
+        points.forEach((p, i) => {
+            const q = points[(i + 1) % points.length];
+            shapes.push(g1(p[0], p[1], q[0], q[1]));
+        });
+        return shapes;
+    };
+
+    const tool = (r = 0.4) => ({
+        sections: [{role: 'cut', shapes: nosedOutline(r), elements: [{type: 'arc', radius: r, center: [r, 0, r]}]}],
+    });
+
+    const withPart = () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 25)});
+        View.sinumerikView.parseData.contour = bar(0, 40, 25);
+        resetMaterialTrace();
+    };
+
+    //  Z 55 ──────> Z 40 at X 20, then out to X 25 along the face.
+    const program = () => [
+        {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+        {...g1(40, 20, 40, 25), toolRadiusCompensation: 'G42'},
+    ];
+
+    test('the approach stops at the contour instead of cutting past it', () => {
+        withPart();
+        const st = advanceMaterialTrace(program(), 1);
+
+        // Taking the normal from the approach block's own direction turns the
+        // offset through 90°, which drives the nose a radius past the face and
+        // into the part — and nothing later takes that back.
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('and the whole contour runs clean', () => {
+        withPart();
+        const st = advanceMaterialTrace(program(), 2);
+        expect(st.gouges).toEqual([]);
+        expect(worstGouge()).toBeNull();
+    });
+
+    test('the approach ends where the contour block begins', () => {
+        // The invariant underneath: one point, reached two ways.
+        withPart();
+        const elements = program();
+        const first = referencePointOf(elements, 0);
+        const second = referencePointOf(elements, 1);
+
+        expect(first.to[0]).toBeCloseTo(second.from[0], 9);
+        expect(first.to[1]).toBeCloseTo(second.from[1], 9);
+    });
+
+    test('a neighbour that does not move in the plane lends no direction', () => {
+        // The block after the approach is compensated but moves only out of the
+        // plane, so it has no normal to lend. Falling back to the approach's own
+        // direction is approximate; dropping the correction altogether would put
+        // the tool a whole nose radius out, which is not.
+        withPart();
+        const elements = [
+            {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+            {...g1(40, 20, 40, 20), Y: 5, toolRadiusCompensation: 'G42'},
+        ];
+        const cp = referencePointOf(elements, 0);
+
+        expect(cp.to[0] === 40 && cp.to[1] === 20).toBe(false);
+        const ownWay = referencePointOf(
+            [{...elements[0]}, {...g1(40, 20, 20, 20), toolRadiusCompensation: 'G42'}], 0);
+        expect(cp.to[0]).toBeCloseTo(ownWay.to[0], 9);
+        expect(cp.to[1]).toBeCloseTo(ownWay.to[1], 9);
+    });
+
+    test('a departure leaves from where the contour ended', () => {
+        withPart();
+        const elements = [
+            {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+            {...g1(40, 20, 40, 25), toolRadiusCompensation: 'G42'},
+            {...g1(40, 25, 42, 25), toolRadiusCompensation: 'Departure'},
+        ];
+        const contour = referencePointOf(elements, 1);
+        const away = referencePointOf(elements, 2);
+
+        expect(away.from[0]).toBeCloseTo(contour.to[0], 9);
+        expect(away.from[1]).toBeCloseTo(contour.to[1], 9);
+        // And it gives the correction back by the end of the block.
+        expect(away.to[0]).toBeCloseTo(42, 9);
+        expect(away.to[1]).toBeCloseTo(25, 9);
     });
 });
 

@@ -475,6 +475,63 @@ describe('the reference-point path', () => {
         expect(departure.to).toEqual(to);
     });
 
+    test('an approach ends normal to the contour, not to itself', () => {
+        // The user's case: the approach runs along Z at constant X, and the
+        // first contour block runs along X at constant Z. The control (NORM)
+        // finishes the approach standing normal to the CONTOUR, so the first
+        // contour block starts tangent. Taking the normal from the approach's
+        // own direction puts the tool a nose radius out along the wrong axis —
+        // straight into the material, which it then cuts.
+        const from = [200, 245];
+        const to = [100, 245];                  // approach: -Z at constant X
+        const contour = [0, 5.5];               // first contour block: +X only
+
+        const approach = referencePointSegment(from, to, {
+            compensation: 'G42', nose: NOSE, ramp: 'in', exitDirection: contour,
+        });
+
+        // What the first contour block itself will use at its start.
+        const first = referencePointSegment(to, [to[0], to[1] + contour[1]], {
+            compensation: 'G42', nose: NOSE,
+        });
+
+        expect(approach.from).toEqual(from);     // no correction yet
+        expect(approach.to[0]).toBeCloseTo(first.from[0], 10);
+        expect(approach.to[1]).toBeCloseTo(first.from[1], 10);
+
+        // And it is NOT where its own direction would have put it.
+        const ownWay = referencePointSegment(from, to, {compensation: 'G42', nose: NOSE, ramp: 'in'});
+        expect(Math.hypot(approach.to[0] - ownWay.to[0], approach.to[1] - ownWay.to[1]))
+            .toBeCloseTo(NOSE.radius * Math.SQRT2, 10);
+    });
+
+    test('a departure starts where the contour left off', () => {
+        const contour = [-100, 0];              // last contour block: -Z only
+        const from = [0, 250];
+        const to = [2, 250];
+
+        const departure = referencePointSegment(from, to, {
+            compensation: 'G42', nose: NOSE, ramp: 'out', entryDirection: contour,
+        });
+        const last = referencePointSegment([from[0] - contour[0], from[1]], from, {
+            compensation: 'G42', nose: NOSE,
+        });
+
+        expect(departure.to).toEqual(to);        // correction gone by the end
+        expect(departure.from[0]).toBeCloseTo(last.to[0], 10);
+        expect(departure.from[1]).toBeCloseTo(last.to[1], 10);
+    });
+
+    test('a borrowed direction is only used where the ramp needs it', () => {
+        // A fully compensated block takes both ends from its own direction, so
+        // handing it a neighbour's must change nothing.
+        const plain = referencePointSegment([0, 10], [-50, 10], {compensation: 'G41', nose: NOSE});
+        const same = referencePointSegment([0, 10], [-50, 10], {
+            compensation: 'G41', nose: NOSE, entryDirection: null, exitDirection: null,
+        });
+        expect(same).toEqual(plain);
+    });
+
     test('a block with no movement is left alone', () => {
         // No direction means no normal to take, and it sweeps nothing anyway.
         const seg = referencePointSegment([5, 5], [5, 5], {compensation: 'G41', nose: NOSE});
