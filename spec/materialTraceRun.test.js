@@ -17,6 +17,7 @@ const {
     materialTraceState,
     advanceMaterialTrace,
     materialTraceRects,
+    materialTracePartialRects,
     materialTraceGougeRects,
     worstGouge,
     worstOffContour,
@@ -506,7 +507,7 @@ describe('the block being animated, shown without being applied', () => {
         setup();
         advanceMaterialTrace(pass, 0);
         setPartialFrame({index: 0, fraction: 0.5});
-        const half = materialTraceRects()
+        const half = materialTracePartialRects()
             .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
 
         // The tool trails its outline behind the cutting point, so half the
@@ -521,7 +522,7 @@ describe('the block being animated, shown without being applied', () => {
         const before = totalArea(st.grid);
 
         setPartialFrame({index: 0, fraction: 0.6});
-        expect(materialTraceRects().length).toBeGreaterThan(0);
+        expect(materialTracePartialRects().length).toBeGreaterThan(0);
 
         expect(totalArea(st.grid)).toBeCloseTo(before, 9);
         expect(st.removed).toBe(0);
@@ -534,25 +535,57 @@ describe('the block being animated, shown without being applied', () => {
         const applied = materialTraceRects();
 
         setPartialFrame({index: 0, fraction: 0.5});
+        expect(materialTracePartialRects()).toEqual([]);
         expect(materialTraceRects()).toBe(applied);
+    });
+
+    test('the applied material keeps its identity while the block moves', () => {
+        // What the renderer depends on: a frame that only moved the tool leaves
+        // the big list alone, so its geometry stays on the card untouched. And
+        // the applied list holds only what was applied — nothing is applied yet
+        // here, so it is empty however much of the block is being shown.
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.3});
+
+        const applied = materialTraceRects();
+        expect(applied).toEqual([]);
+        expect(materialTracePartialRects().length).toBeGreaterThan(0);
+
+        setPartialFrame({index: 0, fraction: 0.6});
+        expect(materialTraceRects()).toBe(applied);
+        expect(materialTraceRects()).toEqual([]);
+    });
+
+    test('what the block shows depends on how much is applied, not only on the block', () => {
+        // Scrubbing back puts the material back, so the same half-block over the
+        // same ground now has something to take again. The overlay is cached, and
+        // caching it on the block alone would show the earlier answer.
+        const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
+        advanceMaterialTrace(twice, 1);
+        setPartialFrame({index: 1, fraction: 0.5});
+        expect(materialTracePartialRects()).toEqual([]);   // first pass took it all
+
+        advanceMaterialTrace(twice, 0);
+        setPartialFrame({index: 1, fraction: 0.5});
+        expect(materialTracePartialRects().length).toBeGreaterThan(0);
     });
 
     test('nothing shown at the very start of a block, or with no partial frame', () => {
         advanceMaterialTrace(pass, 0);
         setPartialFrame({index: 0, fraction: 0});
-        expect(materialTraceRects()).toEqual([]);
+        expect(materialTracePartialRects()).toEqual([]);
         setPartialFrame(null);
-        expect(materialTraceRects()).toEqual([]);
+        expect(materialTracePartialRects()).toEqual([]);
     });
 
     test('moving through the block rebuilds the picture, standing still does not', () => {
         advanceMaterialTrace(pass, 0);
         setPartialFrame({index: 0, fraction: 0.3});
-        const first = materialTraceRects();
-        expect(materialTraceRects()).toBe(first);
+        const first = materialTracePartialRects();
+        expect(materialTracePartialRects()).toBe(first);
 
         setPartialFrame({index: 0, fraction: 0.4});
-        const second = materialTraceRects();
+        const second = materialTracePartialRects();
         expect(second).not.toBe(first);
         expect(second.length).toBeGreaterThan(0);
     });
@@ -560,7 +593,7 @@ describe('the block being animated, shown without being applied', () => {
     test('what is shown is a subset of what the block goes on to remove', () => {
         advanceMaterialTrace(pass, 0);
         setPartialFrame({index: 0, fraction: 0.7});
-        const shown = materialTraceRects();
+        const shown = materialTracePartialRects();
 
         advanceMaterialTrace(pass, 1);
         setPartialFrame(null);
@@ -578,12 +611,9 @@ describe('the block being animated, shown without being applied', () => {
         // show for it however far into it the animation is.
         const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
         advanceMaterialTrace(twice, 1);
-        const applied = materialTraceRects();
 
         setPartialFrame({index: 1, fraction: 0.5});
-        const shown = materialTraceRects();
-        expect(shown.length).toBe(applied.length);
-        expect(shown).toEqual(applied);
+        expect(materialTracePartialRects()).toEqual([]);
     });
 
     test('a deeper second pass shows only what is left, not the whole depth', () => {
@@ -592,10 +622,9 @@ describe('the block being animated, shown without being applied', () => {
         // full-depth cut.
         const deeper = [g1(18, 5, 2, 5), g1(18, 4, 2, 4)];
         advanceMaterialTrace(deeper, 1);
-        const applied = materialTraceRects();
 
         setPartialFrame({index: 1, fraction: 0.5});
-        const shown = materialTraceRects().slice(applied.length);
+        const shown = materialTracePartialRects();
 
         expect(shown.length).toBeGreaterThan(0);
         // The first pass took 5…7, so the second can only find 4…5 still there.
@@ -606,7 +635,7 @@ describe('the block being animated, shown without being applied', () => {
         setup({toolGeometry: null});
         advanceMaterialTrace(pass, 0);
         setPartialFrame({index: 0, fraction: 0.5});
-        expect(materialTraceRects()).toEqual([]);
+        expect(materialTracePartialRects()).toEqual([]);
     });
 });
 
