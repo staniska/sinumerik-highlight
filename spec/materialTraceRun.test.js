@@ -40,6 +40,7 @@ const {
     MAX_SNAPSHOTS,
     UNDO_BUDGET_ENTRIES,
     COLLISION_GIVEUP,
+    OFF_CONTOUR_TOLERANCE,
     collisionCheckStopped,
     thinKeyframes,
     KEYFRAME_WORK_SHARE,
@@ -2209,6 +2210,23 @@ describe('checking the painted boundary against the programmed path', () => {
         expect(st.removed).toBeGreaterThan(0);
         expect(st.offContour).toEqual([]);
         expect(worstOffContour()).toBeNull();
+    });
+
+    test('a drawing that rounds differently from the declared nose is tolerated', () => {
+        // A real tool file: its arc endpoints are mutually inconsistent with the
+        // declared nose by 0.016 in one coordinate, which puts the drawn centre
+        // 0.024 off. That is authoring slack, not a compensation error, and the
+        // tolerance is set to clear it.
+        const st = run(misdrawnTool(0.4, 0.024), compensated(50, 10, 10, 10));
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('and anything of the order a wrong reference point gives is not', () => {
+        // The error this exists for is the file drawn about a different point:
+        // for cutting-edge positions 1…8 that is r·√2 — 0.57 mm on a 0.4 nose.
+        const st = run(misdrawnTool(0.4, 0.1), compensated(50, 10, 10, 10));
+        expect(st.offContour.length).toBe(1);
+        expect(worstOffContour().deviation).toBeGreaterThan(OFF_CONTOUR_TOLERANCE);
     });
 
     test('a nose declared off its true place is caught, with the distance', () => {
