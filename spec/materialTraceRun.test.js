@@ -2212,6 +2212,34 @@ describe('checking the painted boundary against the programmed path', () => {
         expect(worstOffContour()).toBeNull();
     });
 
+    test('the distance reported is the one across the path, not along a column', () => {
+        // A column can only measure radially, and the steeper the block the more
+        // that reading exceeds the real distance: a tool 0.017 out came back as
+        // 0.055 where a rounding ran at 4:1. What the check means to say is how
+        // far the boundary lies from the line, so the reading is projected onto
+        // the block's own normal — and then it matches the displacement of the
+        // tool, whatever the slope.
+        const slip = 0.1;
+        const across = (el) => {
+            // The outline's nose is at (r, r) and the declaration says
+            // (r + slip, r + slip), so the whole boundary is displaced by that.
+            const d = [el.Z - el.Z_start, el.X - el.X_start];
+            const len = Math.hypot(d[0], d[1]);
+            return Math.abs((-slip * d[1] + -slip * -d[0]) / len);
+        };
+
+        const cylinder = compensated(50, 10, 10, 10);
+        run(misdrawnTool(0.4, slip), cylinder);
+        expect(worstOffContour().deviation).toBeCloseTo(across(cylinder), 3);
+
+        // Four of X for every one of Z: measured radially this reads 0.5, four
+        // times the distance the tool is actually out by.
+        const steep = compensated(50, 6, 45, 26);
+        run(misdrawnTool(0.4, slip), steep);
+        expect(worstOffContour().deviation).toBeCloseTo(across(steep), 2);
+        expect(worstOffContour().deviation).toBeLessThan(0.2);
+    });
+
     test('a drawing that rounds differently from the declared nose is tolerated', () => {
         // A real tool file: its arc endpoints are mutually inconsistent with the
         // declared nose by 0.016 in one coordinate, which puts the drawn centre
