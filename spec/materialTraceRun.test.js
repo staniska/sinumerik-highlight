@@ -370,6 +370,38 @@ describe('rectangles for the renderer', () => {
     });
 });
 
+describe('what the tool is, asked once and not once per block', () => {
+    beforeEach(() => setup());
+
+    test('the nose and the colliders are cached on the tool, not recomputed', () => {
+        const geometry = View.sinumerikView.toolGeometry[TOOL_PATH];
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect(geometry._nose_ZX).toEqual({center: [0.4, 0.4], radius: 0.4});
+        expect(geometry._colliders).toEqual([]);
+    });
+
+    test('a tool with no nose caches that answer too, rather than asking again', () => {
+        // `null` is the answer, and an answer that reads as "not cached yet"
+        // would be recomputed for every block of the program.
+        const geometry = View.sinumerikView.toolGeometry[TOOL_PATH];
+        geometry.sections[0].elements = [];
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect('_nose_ZX' in geometry).toBe(true);
+        expect(geometry._nose_ZX).toBeNull();
+    });
+
+    test('the outline keeps its own convexity and its own box', () => {
+        const section = View.sinumerikView.toolGeometry[TOOL_PATH].sections[0];
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        const outline = section._polygon_ZX;
+        expect(outline._isConvex).toBe(true);
+        expect(outline._box).toEqual({lo0: 0, hi0: 2, lo1: 0, hi1: 2});
+    });
+});
+
 describe('the block being animated, shown without being applied', () => {
     beforeEach(() => {
         setup();

@@ -734,7 +734,7 @@ describe('skipping columns before converting them', () => {
 });
 
 describe('the convex fast path', () => {
-    const {isConvex, convexHull, convexSpansAt, convexScanner, sweptComponents, componentsSpansAt} =
+    const {isConvex, convexHull, convexSpansAt, convexScanner, sweptConvexHull, sweptComponents, componentsSpansAt} =
         require('../lib/materialTrace');
 
     const sq = (a0lo, a0hi, a1lo, a1hi) => [
@@ -778,6 +778,73 @@ describe('the convex fast path', () => {
         expect(componentsSpansAt(fast, 5)).toEqual([[0, 2]]);
         // The dent is shallow, so away from it the two agree.
         expect(componentsSpansAt(slow, 5)[0][0]).toBeCloseTo(0, 10);
+    });
+
+    test('the built hull covers exactly what the sorted hull does', () => {
+        // Built from the outline's own order instead of sorted into one, so it
+        // has to agree with `convexHull` everywhere a column could fall — and in
+        // both directions of travel and both ring handednesses, which is what
+        // the facing test depends on.
+        let seed = 777;
+        const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+
+        for (let trial = 0; trial < 80; trial++) {
+            const pts = [];
+            for (let i = 0; i < 3 + Math.floor(rnd() * 16); i++) {
+                pts.push([rnd() * 30 - 15, rnd() * 30 - 15]);
+            }
+            let ring = convexHull(pts);
+            if (ring.length < 3 || !isConvex(ring)) continue;
+            if (trial % 2) ring = ring.slice().reverse();     // the other way round
+
+            const from = [rnd() * 20 - 10, rnd() * 20 - 10];
+            const to = [rnd() * 20 - 10, rnd() * 20 - 10];
+
+            const built = sweptConvexHull(ring, from, to);
+            const sorted = convexHull(
+                ring.map(p => [p[0] + from[0], p[1] + from[1]])
+                    .concat(ring.map(p => [p[0] + to[0], p[1] + to[1]])));
+
+            expect(isConvex(built)).toBe(true);
+
+            const a0 = sorted.map(p => p[0]);
+            const lo = Math.min(...a0) - 1;
+            const hi = Math.max(...a0) + 1;
+            for (let k = 0; k <= 200; k++) {
+                const at = lo + (hi - lo) * (k / 200);
+                const want = convexSpansAt(sorted, at);
+                const got = convexSpansAt(built, at);
+                expect(got.length).toBe(want.length);
+                if (want.length) {
+                    expect(got[0][0]).toBeCloseTo(want[0][0], 9);
+                    expect(got[0][1]).toBeCloseTo(want[0][1], 9);
+                }
+            }
+        }
+    });
+
+    test('a move that goes nowhere sweeps the outline itself', () => {
+        const built = sweptConvexHull(sq(0, 2, 0, 2), [5, 5], [5, 5]);
+        expect(convexSpansAt(built, 6)).toEqual([[5, 7]]);
+        expect(convexSpansAt(built, 8)).toEqual([]);
+    });
+
+    test('a ring with no area falls back rather than guessing which way it faces', () => {
+        const flat = [[0, 0], [1, 0], [2, 0]];
+        const built = sweptConvexHull(flat, [0, 0], [10, 0]);
+        expect(built.length).toBeGreaterThan(0);
+    });
+
+    test('convexity is decided once per outline, not once per move', () => {
+        // The outline arrives as the same cached array for every block of the
+        // program; deciding again each time was pure repetition.
+        const outline = sq(0, 2, 0, 2);
+        sweptComponents(outline, [0, 0], [10, 0]);
+        expect(outline._isConvex).toBe(true);
+
+        const dented = [[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]];
+        sweptComponents(dented, [0, 0], [10, 0]);
+        expect(dented._isConvex).toBe(false);
     });
 
     test('the two-pointer scan answers exactly as the per-edge test does', () => {
