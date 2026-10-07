@@ -370,6 +370,93 @@ describe('rectangles for the renderer', () => {
     });
 });
 
+describe('columns settled without reading them out', () => {
+    beforeEach(() => setup());
+
+    test('a pass over ground it already cut writes nothing down', () => {
+        // The second pass covers the same columns and takes nothing. Deciding
+        // that from the column's own ceiling costs one comparison; reading its
+        // spans out to find the same answer costs an allocation per column, and
+        // an undo record holding every one of them.
+        const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(twice, 1);
+        const afterFirst = st.undoEntries;
+        const removedOnce = st.removed;
+
+        advanceMaterialTrace(twice, 2);
+        expect(st.removed).toBeCloseTo(removedOnce, 9);
+        expect(st.undoEntries).toBe(afterFirst);
+        // Still only the first element's record: the second left nothing to undo.
+        expect(st.undo.length).toBe(1);
+        expect(st.undo[0].at).toBe(0);
+    });
+
+    test('a tool trailing its own outline settles those columns without reading them', () => {
+        // A wedge whose underside rises away from the cutting point, as a real
+        // insert's does, cutting one straight taper as two blocks. Behind the
+        // nose the underside climbs faster than the taper falls, so it passes
+        // over what the first block left without reaching it — while the nose
+        // itself is below that level, which is why the sweep's bounding box
+        // cannot settle the column and the column's own ceiling must.
+        const wedge = {
+            name: 'WEDGE', variables: {}, warnings: [], errors: [],
+            sections: [{
+                color: '#d8a13b', role: 'cut',
+                shapes: [g1(0, 0, 1, 0), g1(1, 0, 6, 5), g1(6, 5, 6, 9), g1(6, 9, 0, 9), g1(0, 9, 0, 0)],
+                elements: [],
+            }],
+        };
+        setup({toolGeometry: wedge});
+
+        const taper = [g1(18, 9, 12, 7), g1(12, 7, 6, 5)];
+        const st = advanceMaterialTrace(taper, 1);
+        const clearedAfterFirst = st.clearColumns;
+        advanceMaterialTrace(taper, 2);
+
+        expect(st.clearColumns - clearedAfterFirst).toBeGreaterThan(0);
+        expect(st.removed).toBeGreaterThan(0);
+    });
+
+    test('a pass crossing ground already cut writes down only the columns it bites', () => {
+        // A step: the right-hand half is already down to 8, the left is still at
+        // 10, and the pass runs at 9 across both. The whole range passes the
+        // bounding test — the outline does reach material somewhere — so it is
+        // the per-column ceiling that settles the half that is already clear.
+        const elements = [g1(18, 8, 10, 8), g1(18, 9, 2, 9)];
+        const st = advanceMaterialTrace(elements, 2);
+
+        const record = st.undo[st.undo.length - 1];
+        expect(record.at).toBe(1);
+
+        const centre = (column) => st.grid.min + (column + 0.5) * st.grid.pitch;
+        const reached = Math.max(...record.columns.map(([column]) => centre(column)));
+
+        // The step is at Z 10, and the outline covers up to Z 20 on this pass.
+        // Nothing beyond the step is written down, because there is nothing there
+        // left to cut.
+        expect(record.columns.length).toBeGreaterThan(0);
+        expect(reached).toBeLessThan(11);
+    });
+
+    test('a pass that only grazes the stock records just the columns it cut', () => {
+        const st = advanceMaterialTrace([g1(18, 9.9, 12, 9.9)], 1);
+        // The outline is 2 mm tall and the blank 10 mm, so only its bottom edge
+        // bites; the columns it covers above the stock are not written down.
+        expect(st.undoEntries).toBeGreaterThan(0);
+        expect(st.undoEntries).toBeLessThanOrEqual(st.touchedMax - st.touchedMin + 1);
+    });
+
+    test('a gouge is still found when the cut does reach the part', () => {
+        // The cheap test is a necessary condition, not the answer: when it says
+        // "maybe" the full arithmetic still has to run.
+        setup();
+        View.sinumerikView.parseData.contour = bar(0, 20, 6);
+        const st = advanceMaterialTrace([g1(18, 4, 2, 4)], 1);
+        expect(st.gouges.length).toBe(1);
+        expect(worstGouge().depth).toBeGreaterThan(0);
+    });
+});
+
 describe('what the tool is, asked once and not once per block', () => {
     beforeEach(() => setup());
 
