@@ -543,14 +543,65 @@ describe('keyframes earn their keep', () => {
     });
 
     test('past the cap the spacing doubles instead of the memory growing', () => {
-        // 64 elements with a small grid asks for one keyframe per element, which
-        // overruns the cap and must thin out rather than keep allocating.
-        const els = passes(8);
-        expect(els.length).toBe(64);
+        // Exactly as many elements as the cap allows keyframes: the interval
+        // starts at one per element, which overruns the cap by the keyframe at
+        // zero and must thin rather than keep allocating. A longer program
+        // would not test this — the interval would already be 2 and the count
+        // would come in under the cap on its own.
+        const els = passes(Math.ceil(MAX_SNAPSHOTS / 8));
+        expect(els.length).toBe(MAX_SNAPSHOTS);
 
         const st = advanceMaterialTrace(els, els.length);
         expect(st.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
         expect(st.snapshotEvery).toBeGreaterThan(1);
+
+        const bytes = st.snapshots.reduce(
+            (n, snap) => n + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0), 0);
+        expect(bytes).toBeLessThanOrEqual(SNAPSHOT_BUDGET_BYTES);
+    });
+
+    test('a keyframe restores the material exactly', () => {
+        // Keyframes are run-length encoded rather than copied whole — that is
+        // what keeps them affordable on a long part — so the encoding has to
+        // round-trip to the byte, not approximately.
+        const els = passes(8);
+        const target = 30;
+
+        advanceMaterialTrace(els, target);
+        const direct = [];
+        for (let i = 0; i < materialTraceState().grid.columns; i++) {
+            direct.push(getSpans(materialTraceState().grid, i));
+        }
+        const directArea = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(els, els.length);
+        // Force the keyframe path rather than the undo log.
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(els, target);
+
+        const st = materialTraceState();
+        expect(st.appliedUpTo).toBe(target);
+        expect(totalArea(st.grid)).toBeCloseTo(directArea, 9);
+        for (let i = 0; i < st.grid.columns; i++) {
+            expect(getSpans(st.grid, i)).toEqual(direct[i]);
+        }
+    });
+
+    test('the max-radius summary survives a keyframe too', () => {
+        // It is written on every setSpans, but a keyframe writes the arrays
+        // straight — so it has to be rebuilt by the decode, or the holder check
+        // starts rejecting columns that do hold material.
+        const els = passes(8);
+        advanceMaterialTrace(els, 20);
+        const direct = Array.from(materialTraceState().grid.maxRadius);
+
+        advanceMaterialTrace(els, els.length);
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(els, 20);
+
+        expect(Array.from(materialTraceState().grid.maxRadius)).toEqual(direct);
     });
 });
 
