@@ -119,6 +119,54 @@ G1 X-30 Z-5
 
 Zero in a tool file is the **reference point of the compensation system** — the imaginary sharp tip for cutting-edge positions 1…8, the nose centre for a round insert (position 9). That is the point which rides along the trajectory, and it must be the same point any hand-computed radius compensation in the program was measured from.
 
+### Tools
+
+A machine carries a list of tools: **Tool list** opens it, both in Machine Manager and in the
+SLDebug footer next to Equipment. Each entry is a sectioned shape file (above) describing the insert
+and its holder; the list is stored per machine, because a tool lives in a turret rather than in a
+file.
+
+A program names a tool and nothing more. The **insert** arrow on a list row writes `;TOOL:NAME` at
+the cursor, and from that line on the tool is drawn translucently on the trajectory during slow
+debug, in the WebGL and the 3D view. The marker is modal and leaks into subroutines, like the rest
+of the modal state; the last one executed wins.
+
+The nose circle — which is what tool-radius compensation turns about — comes from the file's
+declared `$TC_DP6` (nose radius) and `$TC_DP2` (cutting-edge position), the drawing being used only
+when neither is given. The nine positions mean the same thing on every lathe; what changes from
+machine to machine is only how they are seen, which is why Machine Manager shows them arranged
+differently per machine type and carriage.
+
+### Material trace
+
+With **Slow debug** running and a tool declared, the stock the tool removes is painted as it goes,
+and three kinds of damage are reported on the line under the canvas:
+
+- **a cut into the finished part** — the contour, where one is named, is material that must survive.
+  It is judged only by what the tool actually swept, never by where the trajectory ran: a program
+  with hand-computed compensation legitimately runs its line inside the part, and comparing the two
+  would light up every finishing block;
+- **a holder strike** — a section with `ROLE:body` meeting stock that is still there. What the
+  cutting edge removes in the same block is discounted, since a holder trails the edge through
+  material it cleared a moment earlier;
+- **a rapid that cuts** — `G0` is a positioning move and its edge is not meant to meet anything.
+
+Depths are distances into the part, radial or axial whichever the cut really was, and are given in
+diameters when the program works in diameters.
+
+The material is held as columns along the turning axis, each with exact radial intervals, so the
+picture is exact across the diameter however long the part is. The step along the axis is 0.2 mm,
+coarsened automatically only for a part too long to hold at that. Scrubbing the progress bar and
+stepping back are served by keyframes and an undo log rather than by replaying from the blank.
+
+One report comes before the others and says the rest cannot be trusted: **TRACE IS OFF** means the
+painted boundary did not land on the path a compensated block programmed, which is what happens when
+a tool file's zero is not the point the control compensates about. Nothing else gives that away —
+there is no crash and no warning, only a picture that is quietly wrong by the same amount
+everywhere.
+
+Turning only (G18). Milling is not covered: the column model needs a privileged axis.
+
 ### Interpolation
 
 Linear interpolation is supported including the ANG modifier.
@@ -150,7 +198,7 @@ Circular interpolation:
 - Tool radius via `$P_TOOLR` set as a comment before tool change:
   > ;T103 R0.8
   > T="FINE_TOOL" D1 M6
-- Lathe tool radius compensation (G41/G42): approach/departure paths are shortened. Programmed path is rendered, not the tool center path. Use with caution.
+- Lathe tool radius compensation (G41/G42). The programmed path is what is drawn — not the tool centre path, which is what a control shows and what users of this package did not want. The tool itself is drawn on the reference-point path it really travels, and the material trace sweeps the outline along it. An approach ends standing normal to the contour it is about to cut, and a departure leaves from where the contour ended, as NORM does; where two compensated blocks meet, both stop at the crossing of their offset paths, or the nose rolls around the corner (G450) when the material does not fill it. `G451` is not told apart from `G450`, and `KONT` is not reproduced
 - Math: SIN, COS, TAN, ASIN, ACOS, ATAN2, POT, SQRT, TRUNC, ROUND
 - GOTO[BF] jumps
 - IF – ELSE – ENDIF
