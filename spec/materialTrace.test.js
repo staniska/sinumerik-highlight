@@ -273,6 +273,38 @@ describe('when a column runs out of intervals', () => {
         expect(getSpans(grid, 0)).toEqual([[0, 2], [10, 11]]);
     });
 
+    test('a cut that overruns the column follows the same policy', () => {
+        // Cutting splits intervals, so it is a way of running a column out of
+        // room — and it must lose material the same way, not quietly keep an
+        // interval the column has no space for.
+        const grid = createGrid({min: 0, max: 1, pitch: 1, maxIntervals: 2});
+        setSpans(grid, 0, [[0, 10]]);
+
+        expect(subtractSpan(grid, 0, 2, 3)).toBeCloseTo(1, 10);
+        expect(getSpans(grid, 0)).toEqual([[0, 2], [3, 10]]);
+
+        // A second hole needs a third interval, which does not fit.
+        expect(subtractSpan(grid, 0, 5, 6)).toBeCloseTo(1, 10);
+        expect(grid.overflows).toBe(1);
+        expect(grid.counts[0]).toBe(2);
+        expect(grid.maxRadius[0]).toBe(10);
+    });
+
+    test('a cut keeps every interval a roomy column can hold', () => {
+        // Nine holes in one interval is more than the scratch the subtraction
+        // starts with, which has to grow rather than drop what does not fit.
+        const grid = createGrid({min: 0, max: 1, pitch: 1, maxIntervals: 12});
+        setSpans(grid, 0, [[0, 100]]);
+
+        for (let k = 1; k <= 9; k++) subtractSpan(grid, 0, 10 * k, 10 * k + 1);
+
+        expect(grid.overflows).toBe(0);
+        expect(grid.counts[0]).toBe(10);
+        expect(getSpans(grid, 0)[0]).toEqual([0, 10]);
+        expect(getSpans(grid, 0)[9]).toEqual([91, 100]);
+        expect(totalArea(grid)).toBeCloseTo(100 - 9, 10);
+    });
+
     test('no overflow is reported when everything fits', () => {
         const grid = createGrid({min: 0, max: 1, pitch: 1, maxIntervals: 4});
         setSpans(grid, 0, [[0, 1], [2, 3]]);
