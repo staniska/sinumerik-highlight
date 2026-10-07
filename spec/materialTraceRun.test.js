@@ -20,6 +20,7 @@ const {
     materialTraceGougeRects,
     worstGouge,
     worstOffContour,
+    materialTraceOwed,
     materialTraceCollisionRects,
     worstCollision,
     elementsToPolygon,
@@ -1413,5 +1414,78 @@ describe('checking the painted boundary against the programmed path', () => {
         materialTraceState().undoEntries = 0;
         advanceMaterialTrace(elements, 10);
         expect(materialTraceState().offContour).toEqual([]);
+    });
+});
+
+describe('advancing under a time budget', () => {
+    // Jumping forward into ground the program has not covered cannot be short
+    // cut — the material at a block is what every block before it left — so the
+    // only thing that can be done about a long jump is to stop it locking the
+    // window. The caller advances what it can in a frame and comes back.
+    const long = () => {
+        const els = [];
+        for (let p = 0; p < 40; p++) {
+            const r = 9 - (p % 8);
+            for (let k = 0; k < 40; k++) els.push(g1(18 - (k * 16) / 40, r, 18 - ((k + 1) * 16) / 40, r));
+        }
+        return els;
+    };
+
+    test('a budget stops it part way, and says how much is owed', () => {
+        setup();
+        const els = long();
+
+        const st = advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+        expect(st.appliedUpTo).toBeGreaterThan(0);
+        expect(st.appliedUpTo).toBeLessThan(els.length);
+        expect(materialTraceOwed(els.length)).toBe(els.length - st.appliedUpTo);
+    });
+
+    test('calling again carries on from where it stopped', () => {
+        setup();
+        const els = long();
+
+        advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+        const part = materialTraceState().appliedUpTo;
+
+        advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+        expect(materialTraceState().appliedUpTo).toBeGreaterThan(part);
+    });
+
+    test('the end state is the same whether it was interrupted or not', () => {
+        // The budget may only change when the work happens, never what it
+        // produces.
+        setup();
+        const els = long();
+
+        advanceMaterialTrace(els, els.length);
+        const whole = totalArea(materialTraceState().grid);
+        const wholeRects = materialTraceRects().length;
+
+        resetMaterialTrace();
+        setup();
+        let guard = 0;
+        while (materialTraceOwed(els.length) > 0 || !materialTraceState()) {
+            advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+            if (++guard > 10000) break;
+        }
+
+        expect(materialTraceState().appliedUpTo).toBe(els.length);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(whole, 9);
+        expect(materialTraceRects().length).toBe(wholeRects);
+    });
+
+    test('no budget means run to the end, as before', () => {
+        setup();
+        const els = long();
+
+        advanceMaterialTrace(els, els.length);
+        expect(materialTraceState().appliedUpTo).toBe(els.length);
+        expect(materialTraceOwed(els.length)).toBe(0);
+    });
+
+    test('nothing is owed before the trace exists', () => {
+        resetMaterialTrace();
+        expect(materialTraceOwed(500)).toBe(0);
     });
 });
