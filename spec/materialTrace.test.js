@@ -732,3 +732,68 @@ describe('skipping columns before converting them', () => {
         expect(bounds).toEqual({a0min: 10, a0max: 42, a1min: 6, a1max: 8});
     });
 });
+
+describe('the convex fast path', () => {
+    const {isConvex, convexHull, convexSpansAt, sweptComponents, componentsSpansAt} =
+        require('../lib/materialTrace');
+
+    const sq = (a0lo, a0hi, a1lo, a1hi) => [
+        [a0lo, a1lo], [a0hi, a1lo], [a0hi, a1hi], [a0lo, a1hi],
+    ];
+
+    test('convexity is recognised, and a dent denies it', () => {
+        expect(isConvex(sq(0, 2, 0, 2))).toBe(true);
+        expect(isConvex([[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]])).toBe(false);
+        expect(isConvex([[0, 0], [1, 1]])).toBe(false);
+        // A ring with no turn at all is not a region.
+        expect(isConvex([[0, 0], [1, 0], [2, 0]])).toBe(false);
+    });
+
+    test('a convex outline sweeps as one hull, with nothing else built', () => {
+        // The win is in not building the parts, not in scanning them faster:
+        // the general decomposition is one polygon per edge of the outline.
+        const comps = sweptComponents(sq(0, 2, 0, 2), [0, 0], [10, 0]);
+
+        expect(comps.hull).toBeDefined();
+        expect(comps.length).toBe(0);
+        expect(comps.hull.min).toBe(0);
+        expect(comps.hull.max).toBe(12);
+    });
+
+    test('a dented outline still takes the general path', () => {
+        const dented = [[0, 0], [10, 0], [10, 10], [5, 4], [0, 10]];
+        const comps = sweptComponents(dented, [0, 0], [10, 0]);
+
+        expect(comps.hull).toBeUndefined();
+        expect(comps.length).toBeGreaterThan(2);
+    });
+
+    test('both paths answer alike where they overlap', () => {
+        // A square swept along the axis: the hull says the same as the parts.
+        const square = sq(0, 2, 0, 2);
+        const fast = sweptComponents(square, [0, 0], [10, 0]);
+        const dented = [[0, 0], [2, 0], [2, 2], [1, 1.9], [0, 2]];
+        const slow = sweptComponents(dented, [0, 0], [10, 0]);
+
+        expect(componentsSpansAt(fast, 5)).toEqual([[0, 2]]);
+        // The dent is shallow, so away from it the two agree.
+        expect(componentsSpansAt(slow, 5)[0][0]).toBeCloseTo(0, 10);
+    });
+
+    test('a convex ring is crossed twice, so the span is the outer two', () => {
+        expect(convexSpansAt(sq(0, 10, 2, 5), 5)).toEqual([[2, 5]]);
+        expect(convexSpansAt(sq(0, 10, 2, 5), 11)).toEqual([]);
+    });
+
+    test('the hull of two placements wraps both', () => {
+        const hull = convexHull(sq(0, 2, 0, 2).concat(sq(10, 12, 0, 2)));
+        const a0 = hull.map(p => p[0]);
+        const a1 = hull.map(p => p[1]);
+
+        expect(Math.min(...a0)).toBe(0);
+        expect(Math.max(...a0)).toBe(12);
+        expect(Math.min(...a1)).toBe(0);
+        expect(Math.max(...a1)).toBe(2);
+        expect(hull.length).toBe(4);     // the inner corners are not on it
+    });
+});
