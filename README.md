@@ -131,7 +131,7 @@ Circular interpolation:
 ### Supported features
 
 - Polar coordinates (AP, RP)
-- Rounding between two lines or a line and an arc: one-shot (RND) or modal (RNDM, applies to every following corner until RNDM=0)
+- Rounding between two lines, a line and an arc, or two arcs: one-shot (RND) or modal (RNDM, applies to every following corner until RNDM=0). A radius too large for the corner is reduced to the largest that fits, with a warning
 - Chamfer between lines: per-edge trim distance (CHR) or diagonal length (CHF)
 - DIAMON / DIAMOF / DIAM90
 - G70 / G700 (inch) and G71 / G710 (metric) — mid-program unit switching; the machine's own unit setting is the default when neither appears
