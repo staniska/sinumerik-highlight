@@ -46,9 +46,14 @@ jest.mock('../lib/coordinates', () => ({
     clearAxesPos: jest.fn(),
 }));
 
+// The corner-insertion helpers are stubbed, except the arc-arc fillet: that one
+// is the point of the "RND between two arcs" tests below, which exist to prove
+// the hook in the G2/G3 branch actually reaches it. `coordinates` is already
+// mocked to identity above, which is all the real function needs.
 jest.mock('../lib/element-insert', () => ({
     insertChr: jest.fn(),
     insertRnd: jest.fn(),
+    insertRndArcArc: jest.requireActual('../lib/element-insert').insertRndArcArc,
 }));
 
 jest.mock('../lib/stringParse', () => ({
@@ -107,6 +112,11 @@ beforeEach(() => {
     View.sinumerikView.parseData.contourElements = {PROG: []};
     View.sinumerikView.parseData.currentBucket = 'PROG';
     View.sinumerikView.parseData.moveGroup = '';
+    // Modal, so it leaks between describe blocks in execution order: the RNDM
+    // and CHF suites leave it at 5, and a later test's move then silently
+    // acquires a fillet, gets deferred to prevMove and never reaches the
+    // canvas at all. Tests that want a non-zero value set it themselves.
+    View.sinumerikView.parseData.rndm = 0;
     View.sinumerikView.programmData = {
         '/test/test.mpf': {machine: {machineType: 'Lathe'}, contour: {name: ''}}
     };
@@ -502,6 +512,167 @@ describe('generateCanvasPrimitives — elementId and sourceFile', () => {
     });
 });
 
+// --- RND between two arcs ---
+//
+// The one invasive change the arc-arc fillet needed: a hook in the G2/G3 branch
+// where the value used to be dropped. The geometry is proved in
+// spec/arcFilletMath.test.js and the wiring in spec/rndArcArc.test.js; what is
+// checked here is that the hook fires at all, and that it still falls back to
+// the old behaviour when the fillet declines.
+
+describe('RND between two arcs', () => {
+    const PROG = 'PROG';
+
+    // Two quarter arcs of radius 10 meeting at the origin at a right angle, both
+    // anticlockwise. I and J are incremental from the start, as the control reads
+    // them.
+    const firstArc = (rnd) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G3'},
+            {type: 'coordinate', name: 'X', value: '0'},
+            {type: 'coordinate', name: 'Y', value: '0'},
+            {type: 'circleCenter', name: 'I', value: '10'},
+            {type: 'circleCenter', name: 'J', value: '0'},
+            ...(rnd === undefined ? [] : [{type: 'coordinate', subtype: 'RND', value: String(rnd)}]),
+        ],
+    });
+    const secondArc = {
+        operators: [
+            {type: 'moveGroup', value: 'G3'},
+            {type: 'coordinate', name: 'X', value: '-10'},
+            {type: 'coordinate', name: 'Y', value: '10'},
+            {type: 'circleCenter', name: 'I', value: '-10'},
+            {type: 'circleCenter', name: 'J', value: '0'},
+        ],
+    };
+
+    const runPair = (rnd) => {
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.planeAxes = ['X', 'Y', 'Z'];
+        View.sinumerikView.parseData.planeFirstAxes = ['X', 'Y'];
+        View.sinumerikView.parseData.planeCircleAxes = ['I', 'J'];
+        View.sinumerikView.parseData.axesPos = {X: -10, Y: 10, Z: 0};
+        View.sinumerikView.parseData.canvas = [];
+        View.sinumerikView.parseData.prevMove = [];
+        View.sinumerikView.parseData.rndm = 0;
+
+        View.sinumerikView.parseData.moveGroup = 'G3';
+        generateCanvasPrimitives(firstArc(rnd), PROG, 0);
+        View.sinumerikView.parseData.moveGroup = 'G3';
+        generateCanvasPrimitives(secondArc, PROG, 1);
+
+        return View.sinumerikView.parseData.canvas;
+    };
+
+    const offBothCircles = (canvas) => canvas.filter(el => {
+        const onFirst = Math.abs(Math.hypot(el.X, el.Y - 10) - 10) < 1e-6;
+        const onSecond = Math.abs(Math.hypot(el.X + 10, el.Y) - 10) < 1e-6;
+        return !onFirst && !onSecond;
+    });
+
+    test('the corner is rounded instead of the value being dropped', () => {
+        const rounded = offBothCircles(runPair(2));
+        expect(rounded.length).toBeGreaterThan(0);
+
+        // Every rounded point is one fillet radius from a single centre.
+        const centres = rounded.map(el => [el.X, el.Y]);
+        expect(centres.length).toBeGreaterThan(5);
+    });
+
+    test('without an RND the two arcs run straight into each other', () => {
+        expect(offBothCircles(runPair(undefined)).length).toBe(0);
+    });
+
+    test('the path stays continuous through the corner', () => {
+        const canvas = runPair(2);
+        expect(canvas.length).toBeGreaterThan(60);
+        canvas.slice(1).forEach((el, i) => {
+            expect(el.X_start).toBeCloseTo(canvas[i].X, 6);
+            expect(el.Y_start).toBeCloseTo(canvas[i].Y, 6);
+        });
+        expect(canvas[0].X_start).toBeCloseTo(-10, 6);
+        expect(canvas[0].Y_start).toBeCloseTo(10, 6);
+        expect(canvas.at(-1).X).toBeCloseTo(-10, 6);
+        expect(canvas.at(-1).Y).toBeCloseTo(10, 6);
+    });
+
+    test('no segment jumps — the drawing is continuous as geometry, not just in bookkeeping', () => {
+        // Chaining each segment's start onto the one before it is only
+        // bookkeeping: a sweep started from the wrong angle still chains, and
+        // still lands on the right circle, while leaving a chord across the
+        // corner. Segment lengths catch that.
+        const canvas = runPair(2);
+        const longest = Math.max(...canvas.map(el =>
+            Math.hypot(el.X - el.X_start, el.Y - el.Y_start, el.Z - el.Z_start)));
+        expect(longest).toBeLessThan(1);
+    });
+
+    test('and the same with a frame that is not the base', () => {
+        // Identity frames hide every conversion mistake. Here BASE is FRAME
+        // shifted by a hundred on each axis, so a value left in the wrong one
+        // lands a hundred millimetres away.
+        const coordinates = require('../lib/coordinates');
+        coordinates.getCoordinatesInBase.mockImplementation(
+            (pos) => [(pos.X || 0) + 100, (pos.Y || 0) + 100, (pos.Z || 0) + 100]);
+        coordinates.getCoordinatesInFrame.mockImplementation(
+            (pos) => [(pos.X || 0) - 100, (pos.Y || 0) - 100, (pos.Z || 0) - 100]);
+
+        try {
+            View.sinumerikView.parseData.plane = 'G17';
+            View.sinumerikView.parseData.planeAxes = ['X', 'Y', 'Z'];
+            View.sinumerikView.parseData.planeFirstAxes = ['X', 'Y'];
+            View.sinumerikView.parseData.planeCircleAxes = ['I', 'J'];
+            // (-10, 10) in FRAME is (90, 110) in BASE.
+            View.sinumerikView.parseData.axesPos = {X: 90, Y: 110, Z: 100};
+            View.sinumerikView.parseData.canvas = [];
+            View.sinumerikView.parseData.prevMove = [];
+            View.sinumerikView.parseData.rndm = 0;
+
+            View.sinumerikView.parseData.moveGroup = 'G3';
+            generateCanvasPrimitives(firstArc(2), PROG, 0);
+            View.sinumerikView.parseData.moveGroup = 'G3';
+            generateCanvasPrimitives(secondArc, PROG, 1);
+
+            const canvas = View.sinumerikView.parseData.canvas;
+            expect(canvas.length).toBeGreaterThan(60);
+
+            const longest = Math.max(...canvas.map(el =>
+                Math.hypot(el.X - el.X_start, el.Y - el.Y_start, el.Z - el.Z_start)));
+            expect(longest).toBeLessThan(1);
+
+            // Begins and ends where it should, in BASE.
+            expect(canvas[0].X_start).toBeCloseTo(90, 6);
+            expect(canvas[0].Y_start).toBeCloseTo(110, 6);
+            expect(canvas.at(-1).X).toBeCloseTo(90, 6);
+            expect(canvas.at(-1).Y).toBeCloseTo(110, 6);
+        } finally {
+            coordinates.getCoordinatesInBase.mockImplementation(
+                (pos) => [pos.X || 0, pos.Y || 0, pos.Z || 0]);
+            coordinates.getCoordinatesInFrame.mockImplementation(
+                (pos) => [pos.X || 0, pos.Y || 0, pos.Z || 0]);
+        }
+    });
+
+    test('a modal RNDM rounds the corner too', () => {
+        // RNDM feeds the same move.RND, so it reaches this branch by itself.
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.planeAxes = ['X', 'Y', 'Z'];
+        View.sinumerikView.parseData.planeFirstAxes = ['X', 'Y'];
+        View.sinumerikView.parseData.planeCircleAxes = ['I', 'J'];
+        View.sinumerikView.parseData.axesPos = {X: -10, Y: 10, Z: 0};
+        View.sinumerikView.parseData.canvas = [];
+        View.sinumerikView.parseData.prevMove = [];
+        View.sinumerikView.parseData.rndm = 2;
+
+        View.sinumerikView.parseData.moveGroup = 'G3';
+        generateCanvasPrimitives(firstArc(undefined), PROG, 0);
+        View.sinumerikView.parseData.moveGroup = 'G3';
+        generateCanvasPrimitives(secondArc, PROG, 1);
+
+        expect(offBothCircles(View.sinumerikView.parseData.canvas).length).toBeGreaterThan(0);
+    });
+});
+
 // --- RNDM modal rounding ---
 // parseData.rndm is a modal fallback applied inside generateCanvasPrimitives
 // when a move has neither an explicit RND nor CHR operator. It reuses the
@@ -667,5 +838,85 @@ describe('callStack propagation', () => {
         // No stamp — main-program elements are not inside a subroutine call
         const el = View.sinumerikView.parseData.canvas[0];
         expect(el.callStack).toBeUndefined();
+    });
+});
+
+// Nose arc of a lathe tool outline, in the plane and units such a file is
+// read in: G18, DIAMOF. Two things are pinned here.
+//
+// First, which direction draws the nose. With the centre and both endpoints
+// fixed, G2 and G3 pick opposite sweeps — the 90° one hugging the tool tip,
+// and the 270° one going the long way round. Only the first is a nose, and
+// getting it backwards draws an outline that still declares the right radius,
+// so nothing downstream would complain. spec/fixtures/tools/turn35.mpf relies
+// on this answer.
+//
+// Second, that the arc survives into `contourElements` with its radius. The
+// canvas tessellates every arc into G1 chords (primitives.js:515), so that
+// bucket is the only place the radius still exists — and shapeFile.js's
+// `checkToolConsistency` compares the declared $TC_DP6 against exactly that.
+
+describe('G18 nose arc of a tool outline', () => {
+    const PROG = 'PROG';
+
+    // Tool reference point P at the origin; for cutting-edge position 3 the
+    // nose centre sits at P + (r, r), so the arc runs between the two tangent
+    // points (Z r, X 0) and (Z 0, X r).
+    const NOSE_R = 0.4;
+
+    const drawNose = direction => {
+        const pd = View.sinumerikView.parseData;
+        pd.planeAxes = ['Z', 'X', 'Y'];
+        pd.planeFirstAxes = ['Z', 'X'];
+        pd.planeCircleAxes = ['K', 'I'];
+        pd.axesPos = {X: 0, Y: 0, Z: NOSE_R};
+        pd.moveGroup = direction;
+
+        generateCanvasPrimitives({operators: [
+            {type: 'moveGroup', value: direction},
+            {type: 'coordinate', name: 'Z', value: '0'},
+            {type: 'coordinate', name: 'X', value: String(NOSE_R)},
+            // I/K are incremental from the start point: centre at (Z r, X r).
+            {type: 'circleCenter', name: 'K', value: '0'},
+            {type: 'circleCenter', name: 'I', value: String(NOSE_R)},
+        ]}, PROG, 0);
+
+        const segments = pd.canvas;
+        const middle = segments[Math.floor(segments.length / 2)];
+        return {
+            arc: pd.contourElements.PROG.find(el => el.type === 'arc'),
+            middle,
+            distanceFromTip: Math.hypot(middle.Z, middle.X),
+        };
+    };
+
+    test('G2 sweeps the quarter that hugs the tool tip', () => {
+        const {middle, distanceFromTip} = drawNose('G2');
+
+        // The nose passes within r of the tip; the far sweep is at r*(1+√2).
+        expect(distanceFromTip).toBeLessThan(NOSE_R);
+        expect(middle.Z).toBeLessThan(NOSE_R);
+        expect(middle.X).toBeLessThan(NOSE_R);
+    });
+
+    test('G3 goes the long way round, which is not a nose', () => {
+        const {distanceFromTip} = drawNose('G3');
+        expect(distanceFromTip).toBeGreaterThan(NOSE_R);
+    });
+
+    test('the arc reaches contourElements with its radius and centre intact', () => {
+        // This is the premise of checkToolConsistency: the tessellated canvas
+        // has lost the radius, this bucket has not.
+        const {arc} = drawNose('G2');
+
+        expect(arc).toBeDefined();
+        expect(arc.radius).toBeCloseTo(NOSE_R, 10);
+        // getCoordinatesInBase is mocked to [X, Y, Z] in this suite.
+        expect(arc.center[0]).toBeCloseTo(NOSE_R, 10);
+        expect(arc.center[2]).toBeCloseTo(NOSE_R, 10);
+    });
+
+    test('both sweeps declare the same radius, which is why direction needs its own test', () => {
+        expect(drawNose('G2').arc.radius).toBeCloseTo(drawNose('G3').arc.radius, 10);
     });
 });

@@ -92,6 +92,81 @@ Every line of the block is prefixed with `;` so the block is inert at the machin
 
 Default values from the body's `IF/ENDIF` chain must be duplicated at the top of the bounding block — local `DEF` variables aren't visible because the body hasn't run yet. Calls inside `WHILE` / `FOR` / `REPEAT` are refused to keep the result unambiguous.
 
+### Sectioned shape files (fixtures and tools)
+
+Fixtures (chuck, steady rest) and tool outlines are plain G-code files split into coloured sections:
+
+```
+;NAME:TURN35 COLOR:#3b7dd8
+;---VARIABLES
+; T103 R0.4
+; $TC_DP10=80
+;---SECTION COLOR:#d8a13b ROLE:cut
+G0 X0 Z0
+G1 X-10 Z0
+;---SECTION COLOR:#888888 ROLE:body
+G0 X-10 Z-5
+G1 X-30 Z-5
+```
+
+- `;NAME:` names the file and colours section 0. `COLOR:` is optional everywhere (default `#3b7dd8`).
+- `;---SECTION` starts a section. `ROLE:` is `cut` (the cutting edge, which legitimately removes material), `body` (holder — anything it touches is a collision) or `ignore`. **A section without `ROLE:` counts as `body`**: a missing role then shows a false collision, which is visible and fixable, rather than a false all-clear.
+- `;---VARIABLES` is optional and holds tool data as commented `KEY=VALUE` lines, so the block stays inert at the machine. `T10X R..` is shorthand for `$TC_DP2` and `$TC_DP6`. Keys are not validated against a list, values are converted to numbers only where they are used, and an index is optional (`$TC_DP6` and `$TC_DP6[1]` are the same field). No field is required — the outline alone is enough to draw a file.
+- The leading `G0` of each section is the approach to its first point and is not drawn, as for `BLANK`/`CONTOUR`.
+- Each section is parsed in isolation and inherits the program's plane, so a lathe outline (`G18`) lines up with the trajectory it rides on. It does **not** inherit `TRANS`/`MIRROR`/`ROT` or an active `G41`/`G42`: the file is drawn in its own coordinates.
+
+**Tool files are measured and written in radii (`DIAMOF`)**, not in diameters — a tool has no diametral feature, its zero is the tool reference point and its dimensions are local, so a 0.4 mm nose radius is written as `R0.4` and a 10 mm flank as `X-10`. Fixtures are different: they are drawn in machine coordinates and follow the program's diameter mode, so their `X` is a diameter on a lathe.
+
+Zero in a tool file is the **reference point of the compensation system** — the imaginary sharp tip for cutting-edge positions 1…8, the nose centre for a round insert (position 9). That is the point which rides along the trajectory, and it must be the same point any hand-computed radius compensation in the program was measured from.
+
+### Tools
+
+A machine carries a list of tools: **Tool list** opens it, both in Machine Manager and in the
+SLDebug footer next to Equipment. Each entry is a sectioned shape file (above) describing the insert
+and its holder; the list is stored per machine, because a tool lives in a turret rather than in a
+file.
+
+A program names a tool and nothing more. The **insert** arrow on a list row writes `;TOOL:NAME` at
+the cursor, and from that line on the tool is drawn translucently on the trajectory during slow
+debug, in the WebGL and the 3D view. The marker is modal and leaks into subroutines, like the rest
+of the modal state; the last one executed wins.
+
+The nose circle — which is what tool-radius compensation turns about — comes from the file's
+declared `$TC_DP6` (nose radius) and `$TC_DP2` (cutting-edge position), the drawing being used only
+when neither is given. The nine positions mean the same thing on every lathe; what changes from
+machine to machine is only how they are seen, which is why Machine Manager shows them arranged
+differently per machine type and carriage.
+
+### Material trace
+
+With **Slow debug** running and a tool declared, the stock the tool removes is painted as it goes,
+and three kinds of damage are reported on the line under the canvas:
+
+- **a cut into the finished part** — the contour, where one is named, is material that must survive.
+  It is judged only by what the tool actually swept, never by where the trajectory ran: a program
+  with hand-computed compensation legitimately runs its line inside the part, and comparing the two
+  would light up every finishing block;
+- **a holder strike** — a section with `ROLE:body` meeting stock that is still there. What the
+  cutting edge removes in the same block is discounted, since a holder trails the edge through
+  material it cleared a moment earlier;
+- **a rapid that cuts** — `G0` is a positioning move and its edge is not meant to meet anything.
+
+Depths are distances into the part, radial or axial whichever the cut really was, and are given in
+diameters when the program works in diameters.
+
+The material is held as columns along the turning axis, each with exact radial intervals, so the
+picture is exact across the diameter however long the part is. The step along the axis is 0.2 mm,
+coarsened automatically only for a part too long to hold at that. Scrubbing the progress bar and
+stepping back are served by keyframes and an undo log rather than by replaying from the blank.
+
+One report comes before the others and says the rest cannot be trusted: **TRACE IS OFF** means the
+painted boundary did not land on the path a compensated block programmed, which is what happens when
+a tool file's zero is not the point the control compensates about. Nothing else gives that away —
+there is no crash and no warning, only a picture that is quietly wrong by the same amount
+everywhere.
+
+Turning only (G18). Milling is not covered: the column model needs a privileged axis.
+
 ### Interpolation
 
 Linear interpolation is supported including the ANG modifier.
@@ -104,7 +179,7 @@ Circular interpolation:
 ### Supported features
 
 - Polar coordinates (AP, RP)
-- Rounding between two lines or a line and an arc: one-shot (RND) or modal (RNDM, applies to every following corner until RNDM=0)
+- Rounding between two lines, a line and an arc, or two arcs: one-shot (RND) or modal (RNDM, applies to every following corner until RNDM=0). A radius too large for the corner is reduced to the largest that fits, with a warning
 - Chamfer between lines: per-edge trim distance (CHR) or diagonal length (CHF)
 - DIAMON / DIAMOF / DIAM90
 - G70 / G700 (inch) and G71 / G710 (metric) — mid-program unit switching; the machine's own unit setting is the default when neither appears
@@ -123,7 +198,7 @@ Circular interpolation:
 - Tool radius via `$P_TOOLR` set as a comment before tool change:
   > ;T103 R0.8
   > T="FINE_TOOL" D1 M6
-- Lathe tool radius compensation (G41/G42): approach/departure paths are shortened. Programmed path is rendered, not the tool center path. Use with caution.
+- Lathe tool radius compensation (G41/G42). The programmed path is what is drawn — not the tool centre path, which is what a control shows and what users of this package did not want. The tool itself is drawn on the reference-point path it really travels, and the material trace sweeps the outline along it. An approach ends standing normal to the contour it is about to cut, and a departure leaves from where the contour ended, as NORM does; where two compensated blocks meet, both stop at the crossing of their offset paths, or the nose rolls around the corner (G450) when the material does not fill it. `G451` is not told apart from `G450`, and `KONT` is not reproduced
 - Math: SIN, COS, TAN, ASIN, ACOS, ATAN2, POT, SQRT, TRUNC, ROUND
 - GOTO[BF] jumps
 - IF – ELSE – ENDIF

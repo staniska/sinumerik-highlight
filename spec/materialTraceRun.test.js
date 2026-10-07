@@ -1,0 +1,2443 @@
+// Tests for driving the material trace over canvas elements
+// (lib/materialTraceRun.js).
+//
+// The geometry itself is covered in spec/materialTrace.test.js. What is tested
+// here is the translation: reading a blank and a tool outline out of canvas
+// elements, recovering the compensation side that `offn()` overwrites, and
+// advancing the material without ever having to undo a subtraction.
+
+jest.mock('../lib/sinumerik', () => ({
+    __esModule: true,
+    default: {sinumerikView: {}},
+}));
+
+const View = require('../lib/sinumerik').default;
+const {
+    resetMaterialTrace,
+    materialTraceState,
+    advanceMaterialTrace,
+    materialTraceRects,
+    materialTracePartialRects,
+    toolReferenceSegment,
+    toolReferencePoint,
+    toolPositionAt,
+    toolCornerArc,
+    noseOf,
+    materialTraceGougeRects,
+    worstGouge,
+    worstRapid,
+    worstOffContour,
+    materialTraceOwed,
+    materialTraceCollisionRects,
+    worstCollision,
+    elementsToPolygon,
+    sectionToPolygon,
+    noseFromSections,
+    resolveCompensation,
+    subtractSpansFrom,
+    MATERIAL_TRACE_PITCH,
+    SNAPSHOT_BUDGET_BYTES,
+    MAX_SNAPSHOTS,
+    UNDO_BUDGET_ENTRIES,
+    COLLISION_GIVEUP,
+    OFF_CONTOUR_TOLERANCE,
+    collisionCheckStopped,
+    thinKeyframes,
+    KEYFRAME_WORK_SHARE,
+    materialTraceReport,
+    describeMaterialTrace,
+    setPartialFrame,
+} = require('../lib/materialTraceRun');
+const {getSpans, totalArea, referencePointSegment, CORNER_TOLERANCE: CORNER_TOLERANCE_MM} = require('../lib/materialTrace');
+
+const TOOL_PATH = '/t/turn35.mpf';
+
+// A canvas element the way CanvasElementsArray.push stamps it.
+const g1 = (zs, xs, z, x, extra = {}) => ({
+    type: 'G1',
+    Z_start: zs, X_start: xs, Y_start: 0,
+    Z: z, X: x, Y: 0,
+    workPlane: 'G18',
+    toolRadiusCompensation: 'G40',
+    toolDef: {name: 'TURN35', path: TOOL_PATH},
+    ...extra,
+});
+
+// Rectangular bar from z0 to z1, radius 0 to r, as a closed canvas path.
+const bar = (z0, z1, r) => [
+    g1(z0, 0, z1, 0), g1(z1, 0, z1, r), g1(z1, r, z0, r), g1(z0, r, z0, 0),
+];
+
+// A square cutting section w x w with its corner at the file zero, plus a nose
+// arc so the compensation has a radius to work with.
+const toolGeometry = (w = 2, noseRadius = 0.4) => ({
+    name: 'TURN35',
+    variables: {},
+    warnings: [],
+    errors: [],
+    sections: [{
+        color: '#d8a13b',
+        role: 'cut',
+        shapes: [
+            g1(0, 0, w, 0), g1(w, 0, w, w), g1(w, w, 0, w), g1(0, w, 0, 0),
+        ],
+        elements: [{type: 'arc', radius: noseRadius, center: [noseRadius, 0, noseRadius]}],
+    }],
+});
+
+const setup = (options = {}) => {
+    View.sinumerikView = {
+        parseData: {
+            filename: '/p/main.mpf',
+            blank: options.blank ?? bar(0, 20, 10),
+        },
+        programmData: {'/p/main.mpf': {machine: {machineType: options.machineType ?? 'Lathe'}}},
+        toolGeometry: options.toolGeometry === null ? {} : {[TOOL_PATH]: options.toolGeometry ?? toolGeometry()},
+    };
+    resetMaterialTrace();
+};
+
+describe('reading geometry out of canvas elements', () => {
+    beforeEach(() => setup());
+
+    test('a path becomes a closed outline: first start, then every end', () => {
+        // Same construction the WebGL blank fill uses, so the painted material
+        // lines up with the drawn blank instead of being a pixel off.
+        expect(elementsToPolygon([g1(0, 0, 5, 0), g1(5, 0, 5, 3)], 'Z', 'X'))
+            .toEqual([[0, 0], [5, 0], [5, 3]]);
+    });
+
+    test('non-geometry entries are dropped', () => {
+        const withNoise = [{type: 'msg'}, g1(0, 0, 5, 0), {type: 'pause'}];
+        expect(elementsToPolygon(withNoise, 'Z', 'X')).toEqual([[0, 0], [5, 0]]);
+    });
+
+    test('an empty path is not an outline', () => {
+        expect(elementsToPolygon([], 'Z', 'X')).toEqual([]);
+        expect(elementsToPolygon(undefined, 'Z', 'X')).toEqual([]);
+        expect(sectionToPolygon(undefined, 'Z', 'X')).toEqual([]);
+    });
+});
+
+describe('the nose circle', () => {
+    test('comes from the smallest arc of the cutting section', () => {
+        const sections = [{
+            role: 'cut',
+            elements: [
+                {type: 'arc', radius: 12, center: [1, 0, 2]},
+                {type: 'arc', radius: 0.4, center: [0.4, 0, 0.4]},
+                {type: 'line'},
+            ],
+        }];
+        // Axis order follows the request: a0 = Z is index 2, a1 = X is index 0.
+        expect(noseFromSections(sections, 'Z', 'X')).toEqual({center: [0.4, 0.4], radius: 0.4});
+    });
+
+    test('arcs outside the cutting section are ignored', () => {
+        const sections = [
+            {role: 'cut', elements: [{type: 'arc', radius: 0.8, center: [0.8, 0, 0.8]}]},
+            {role: 'body', elements: [{type: 'arc', radius: 0.05, center: [0, 0, 0]}]},
+        ];
+        expect(noseFromSections(sections, 'Z', 'X').radius).toBeCloseTo(0.8, 10);
+    });
+
+    test('a tool drawn with straight lines only has no nose', () => {
+        // Theoretically sharp: the compensation then degenerates to the
+        // programmed path, which is what a zero-radius tool does.
+        expect(noseFromSections([{role: 'cut', elements: [{type: 'line'}]}], 'Z', 'X')).toBeNull();
+        expect(noseFromSections([], 'Z', 'X')).toBeNull();
+        expect(noseFromSections(undefined, 'Z', 'X')).toBeNull();
+    });
+
+    test('degenerate arcs are not candidates', () => {
+        const sections = [{role: 'cut', elements: [
+            {type: 'arc', radius: 0, center: [0, 0, 0]},
+            {type: 'arc', radius: NaN, center: [0, 0, 0]},
+            {type: 'arc', radius: 0.4},
+            {type: 'arc', radius: 0.6, center: [0.6, 0, 0.6]},
+        ]}];
+        expect(noseFromSections(sections, 'Z', 'X').radius).toBeCloseTo(0.6, 10);
+    });
+});
+
+describe('where the nose circle is', () => {
+    // A tool file carries the numbers the control itself uses: $TC_DP6 is the
+    // nose radius and $TC_DP2 the cutting-edge position. Together they say where
+    // the centre lies relative to the tool's zero point — which is the point the
+    // file is drawn about and the control compensates about.
+    const declared = (variables, sections = toolGeometry().sections) => ({variables, sections});
+
+    test('the declared numbers place the centre, radius and all', () => {
+        // ROMB_2_4_RIGHT, from the user's machine: `; T103 R2.4`.
+        const nose = noseOf(declared({$TC_DP2: '3', $TC_DP6: '2.4'}), 'Z', 'X');
+        expect(nose).toEqual({center: [2.4, 2.4], radius: 2.4});
+    });
+
+    test('each position puts it somewhere else', () => {
+        const at = (sl) => noseOf(declared({$TC_DP2: String(sl), $TC_DP6: '2'}), 'Z', 'X').center;
+        expect(at(1)).toEqual([-2, -2]);
+        expect(at(7)).toEqual([2, 0]);
+        expect(at(9)).toEqual([0, 0]);
+    });
+
+    test('indexed spellings are the same field', () => {
+        // `$TC_DP2[1]` and `$TC_DP2` mean the same while D-numbers are out of
+        // scope, which is what the file format already assumes.
+        const nose = noseOf(declared({'$TC_DP2[1]': '3', '$TC_DP6[1]': '2.4'}), 'Z', 'X');
+        expect(nose.center).toEqual([2.4, 2.4]);
+    });
+
+    test('without them the drawing answers, as before', () => {
+        // The fixture tool draws a 0.4 nose centred at (0.4, 0.4).
+        expect(noseOf(declared({}), 'Z', 'X')).toEqual({center: [0.4, 0.4], radius: 0.4});
+        expect(noseOf(declared(undefined), 'Z', 'X')).toEqual({center: [0.4, 0.4], radius: 0.4});
+    });
+
+    test('a declaration that is not one of the nine falls back to the drawing', () => {
+        expect(noseOf(declared({$TC_DP2: '0', $TC_DP6: '2.4'}), 'Z', 'X').radius).toBe(0.4);
+        expect(noseOf(declared({$TC_DP6: '2.4'}), 'Z', 'X').radius).toBe(0.4);
+        expect(noseOf(declared({$TC_DP2: '3'}), 'Z', 'X').radius).toBe(0.4);
+    });
+
+    test('a plane the table does not speak for falls back to the drawing', () => {
+        // The positions are defined in the turning plane. In any other the
+        // numbers mean nothing, and guessing would be worse than the drawing.
+        const sections = [{
+            role: 'cut',
+            shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)],
+            elements: [{type: 'arc', radius: 0.4, center: [0.4, 0.9, 0.4]}],
+        }];
+        const nose = noseOf(declared({$TC_DP2: '3', $TC_DP6: '2.4'}, sections), 'Y', 'Z');
+        expect(nose).toEqual({center: [0.9, 0.4], radius: 0.4});
+    });
+
+    test('the declaration moves the reference point with it', () => {
+        // The whole point: the compensation is about the declared centre.
+        setup({toolGeometry: {variables: {$TC_DP2: '3', $TC_DP6: '2.4'}, sections: toolGeometry().sections}});
+        const block = [{...g1(40, 20, 20, 20), toolRadiusCompensation: 'G42'}];
+        const cp = toolReferenceSegment(block, 0, 'Z', 'X');
+
+        // G42 travelling -Z puts the nose centre a radius outward, and the zero
+        // point is offset from that centre by the cutting-edge position.
+        expect(cp.from[0]).toBeCloseTo(40 - 2.4, 9);
+        expect(cp.from[1]).toBeCloseTo(20 + 2.4 - 2.4, 9);
+    });
+});
+
+describe('recovering the compensation side offn() overwrote', () => {
+    // offn() replaces G41/G42 with 'Approach'/'Departure' on the transition
+    // blocks and with 'AutoInsert'/'offn_loop' on the ones it synthesises. The
+    // side is gone in all four cases, and without recovering it a compensated
+    // finishing pass would be swept as uncompensated — the outline a nose
+    // radius away from where the tool really was.
+    const chain = labels => labels.map(l => ({toolRadiusCompensation: l}));
+
+    test('an explicit side is taken as it stands', () => {
+        expect(resolveCompensation(chain(['G41']), 0)).toEqual({compensation: 'G41', ramp: null});
+        expect(resolveCompensation(chain(['G42']), 0)).toEqual({compensation: 'G42', ramp: null});
+    });
+
+    test('an approach takes the side of the block it ramps into', () => {
+        const els = chain(['G40', 'Approach', 'G41', 'G41']);
+        expect(resolveCompensation(els, 1)).toEqual({compensation: 'G41', ramp: 'in'});
+    });
+
+    test('a departure takes the side of the block it ramps out of', () => {
+        const els = chain(['G42', 'G42', 'Departure', 'G40']);
+        expect(resolveCompensation(els, 2)).toEqual({compensation: 'G42', ramp: 'out'});
+    });
+
+    test('offn synthetic blocks inherit the side, with no ramp', () => {
+        const els = chain(['G41', 'AutoInsert', 'offn_loop']);
+        expect(resolveCompensation(els, 1)).toEqual({compensation: 'G41', ramp: null});
+        expect(resolveCompensation(els, 2)).toEqual({compensation: 'G41', ramp: null});
+    });
+
+    test('the search stops at G40 rather than reaching across it', () => {
+        // A transition block with uncompensated code on both sides has no side
+        // to inherit; guessing one would offset a block that was never
+        // compensated.
+        const els = chain(['G41', 'G40', 'AutoInsert']);
+        expect(resolveCompensation(els, 2)).toEqual({compensation: 'none', ramp: null});
+    });
+
+    test('with no side anywhere there is no compensation', () => {
+        expect(resolveCompensation(chain(['Approach']), 0)).toEqual({compensation: 'none', ramp: null});
+        expect(resolveCompensation(chain(['G40']), 0)).toEqual({compensation: 'none', ramp: null});
+        expect(resolveCompensation([{}], 0)).toEqual({compensation: 'none', ramp: null});
+    });
+});
+
+describe('what the tool removed', () => {
+    test('spans present in the blank and gone from the material', () => {
+        expect(subtractSpansFrom([[0, 10]], [[0, 6]])).toEqual([[6, 10]]);
+        expect(subtractSpansFrom([[0, 10]], [[0, 3], [7, 10]])).toEqual([[3, 7]]);
+        expect(subtractSpansFrom([[0, 10]], [])).toEqual([[0, 10]]);
+        expect(subtractSpansFrom([[0, 10]], [[0, 10]])).toEqual([]);
+        expect(subtractSpansFrom([], [[0, 10]])).toEqual([]);
+    });
+});
+
+describe('advancing the material', () => {
+    beforeEach(() => setup());
+
+    const pass = () => [g1(18, 8, 2, 8)];   // straight cut along Z at radius 8
+
+    test('refuses to run on a mill, and says so', () => {
+        // Columns need a privileged axis. Reported rather than silently empty:
+        // a feature whose job is showing what was cut must not read as
+        // "nothing was cut".
+        setup({machineType: 'Mill'});
+        expect(advanceMaterialTrace(pass(), 1).status).toBe('notLathe');
+    });
+
+    test('refuses to run without a blank, and says so', () => {
+        setup({blank: []});
+        expect(advanceMaterialTrace(pass(), 1).status).toBe('noBlank');
+    });
+
+    test('seeds from the blank and removes along the pass', () => {
+        const elements = pass();
+        const st = advanceMaterialTrace(elements, 0);
+
+        expect(st.status).toBe('ok');
+        const seeded = totalArea(st.grid);
+        expect(seeded).toBeGreaterThan(0);
+
+        advanceMaterialTrace(elements, 1);
+        expect(totalArea(st.grid)).toBeLessThan(seeded);
+        expect(st.removed).toBeGreaterThan(0);
+    });
+
+    test('advancing is incremental, not a recomputation', () => {
+        const elements = [g1(18, 8, 10, 8), g1(10, 8, 2, 8)];
+
+        advanceMaterialTrace(elements, 1);
+        const afterFirst = totalArea(materialTraceState().grid);
+        expect(materialTraceState().appliedUpTo).toBe(1);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().appliedUpTo).toBe(2);
+        expect(totalArea(materialTraceState().grid)).toBeLessThan(afterFirst);
+    });
+
+    test('asking for the same limit twice changes nothing', () => {
+        const elements = pass();
+        advanceMaterialTrace(elements, 1);
+        const once = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(elements, 1);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(once, 10);
+    });
+
+    test('a limit moving backwards rebuilds from the blank', () => {
+        // Advancing subtracts, and a subtraction cannot be undone — so a
+        // restarted animation has to start from the blank again.
+        const elements = pass();
+        advanceMaterialTrace(elements, 1);
+        const cut = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(elements, 0);
+        expect(materialTraceState().appliedUpTo).toBe(0);
+        expect(totalArea(materialTraceState().grid)).toBeGreaterThan(cut);
+    });
+
+    test('a new element array rebuilds, so a re-parse does not keep an old trace', () => {
+        advanceMaterialTrace(pass(), 1);
+        const first = materialTraceState().grid;
+
+        advanceMaterialTrace(pass(), 0);
+        expect(materialTraceState().grid).not.toBe(first);
+        expect(materialTraceState().appliedUpTo).toBe(0);
+    });
+
+    test('an element with no tool geometry is counted, not silently ignored', () => {
+        // This is the "not computed" case: without an outline there is nothing
+        // to sweep, and it must be distinguishable from "nothing was removed".
+        setup({toolGeometry: null});
+        const st = advanceMaterialTrace(pass(), 1);
+
+        expect(st.skippedTool).toBe(1);
+        expect(st.removed).toBe(0);
+    });
+
+    test('an element made in another plane is counted too', () => {
+        const elements = [g1(18, 8, 2, 8, {workPlane: 'G17'})];
+        const st = advanceMaterialTrace(elements, 1);
+
+        expect(st.skippedPlane).toBe(1);
+        expect(st.removed).toBe(0);
+    });
+
+    test('a body section does not remove material', () => {
+        // Only ROLE:cut cuts. A holder that removed stock would quietly erase
+        // the very collisions it is supposed to reveal.
+        setup({toolGeometry: {
+            sections: [{role: 'body', shapes: toolGeometry().sections[0].shapes, elements: []}],
+        }});
+        const st = advanceMaterialTrace(pass(), 1);
+
+        expect(st.status).toBe('ok');
+        expect(st.removed).toBe(0);
+    });
+
+    test('the grid reaches beyond the path by the tool outline it carries', () => {
+        // The holder extends behind the tip; a grid cut to the trajectory
+        // would clip it.
+        const st = advanceMaterialTrace(pass(), 1);
+        expect(st.grid.min).toBeLessThan(0);
+        expect(st.grid.max).toBeGreaterThan(20);
+    });
+
+    test('an empty element list produces nothing', () => {
+        expect(advanceMaterialTrace([], 0)).toBeNull();
+        expect(advanceMaterialTrace(undefined, 0)).toBeNull();
+    });
+});
+
+describe('rectangles for the renderer', () => {
+    beforeEach(() => setup());
+
+    test('nothing removed, nothing to draw', () => {
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 0);
+        expect(materialTraceRects()).toEqual([]);
+    });
+
+    test('a straight pass merges into few rectangles, not one per column', () => {
+        // At a 0.01 mm pitch a 16 mm cut is 1600 columns. Emitting a quad each
+        // would be 1600 per frame for a single cut; run-length merging makes a
+        // plain cylindrical pass a handful.
+        const elements = [g1(18, 8, 2, 8)];
+        advanceMaterialTrace(elements, 1);
+
+        const rects = materialTraceRects();
+        expect(rects.length).toBeGreaterThan(0);
+        expect(rects.length).toBeLessThan(20);
+    });
+
+    test('the rectangles cover what the pass removed', () => {
+        const elements = [g1(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 1);
+
+        const area = materialTraceRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+        expect(area).toBeCloseTo(st.removed * st.grid.pitch, 6);
+    });
+
+    test('rectangles stay inside the blank', () => {
+        const elements = [g1(18, 8, 2, 8)];
+        advanceMaterialTrace(elements, 1);
+
+        materialTraceRects().forEach(r => {
+            expect(r.a1lo).toBeGreaterThanOrEqual(0);
+            expect(r.a1hi).toBeLessThanOrEqual(10 + 1e-9);
+            expect(r.a0hi).toBeGreaterThan(r.a0lo);
+            expect(r.a1hi).toBeGreaterThan(r.a1lo);
+        });
+    });
+
+    test('no state, no rectangles', () => {
+        resetMaterialTrace();
+        expect(materialTraceRects()).toEqual([]);
+    });
+});
+
+describe('columns settled without reading them out', () => {
+    beforeEach(() => setup());
+
+    test('a pass over ground it already cut writes nothing down', () => {
+        // The second pass covers the same columns and takes nothing. Deciding
+        // that from the column's own ceiling costs one comparison; reading its
+        // spans out to find the same answer costs an allocation per column, and
+        // an undo record holding every one of them.
+        const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(twice, 1);
+        const afterFirst = st.undoEntries;
+        const removedOnce = st.removed;
+
+        advanceMaterialTrace(twice, 2);
+        expect(st.removed).toBeCloseTo(removedOnce, 9);
+        expect(st.undoEntries).toBe(afterFirst);
+        // Still only the first element's record: the second left nothing to undo.
+        expect(st.undo.length).toBe(1);
+        expect(st.undo[0].at).toBe(0);
+    });
+
+    test('a tool trailing its own outline settles those columns without reading them', () => {
+        // A wedge whose underside rises away from the cutting point, as a real
+        // insert's does, cutting one straight taper as two blocks. Behind the
+        // nose the underside climbs faster than the taper falls, so it passes
+        // over what the first block left without reaching it — while the nose
+        // itself is below that level, which is why the sweep's bounding box
+        // cannot settle the column and the column's own ceiling must.
+        const wedge = {
+            name: 'WEDGE', variables: {}, warnings: [], errors: [],
+            sections: [{
+                color: '#d8a13b', role: 'cut',
+                shapes: [g1(0, 0, 1, 0), g1(1, 0, 6, 5), g1(6, 5, 6, 9), g1(6, 9, 0, 9), g1(0, 9, 0, 0)],
+                elements: [],
+            }],
+        };
+        setup({toolGeometry: wedge});
+
+        const taper = [g1(18, 9, 12, 7), g1(12, 7, 6, 5)];
+        const st = advanceMaterialTrace(taper, 1);
+        const clearedAfterFirst = st.clearColumns;
+        advanceMaterialTrace(taper, 2);
+
+        expect(st.clearColumns - clearedAfterFirst).toBeGreaterThan(0);
+        expect(st.removed).toBeGreaterThan(0);
+    });
+
+    test('a pass crossing ground already cut writes down only the columns it bites', () => {
+        // A step: the right-hand half is already down to 8, the left is still at
+        // 10, and the pass runs at 9 across both. The whole range passes the
+        // bounding test — the outline does reach material somewhere — so it is
+        // the per-column ceiling that settles the half that is already clear.
+        const elements = [g1(18, 8, 10, 8), g1(18, 9, 2, 9)];
+        const st = advanceMaterialTrace(elements, 2);
+
+        const record = st.undo[st.undo.length - 1];
+        expect(record.at).toBe(1);
+
+        const centre = (column) => st.grid.min + (column + 0.5) * st.grid.pitch;
+        const reached = Math.max(...record.columns.map(centre));
+
+        // The step is at Z 10, and the outline covers up to Z 20 on this pass.
+        // Nothing beyond the step is written down, because there is nothing there
+        // left to cut.
+        expect(record.columns.length).toBeGreaterThan(0);
+        expect(reached).toBeLessThan(11);
+    });
+
+    test('a pass that only grazes the stock records just the columns it cut', () => {
+        const st = advanceMaterialTrace([g1(18, 9.9, 12, 9.9)], 1);
+        // The outline is 2 mm tall and the blank 10 mm, so only its bottom edge
+        // bites; the columns it covers above the stock are not written down.
+        expect(st.undoEntries).toBeGreaterThan(0);
+        expect(st.undoEntries).toBeLessThanOrEqual(st.touchedMax - st.touchedMin + 1);
+    });
+
+    test('a gouge is still found when the cut does reach the part', () => {
+        // The cheap test is a necessary condition, not the answer: when it says
+        // "maybe" the full arithmetic still has to run.
+        setup();
+        View.sinumerikView.parseData.contour = bar(0, 20, 6);
+        const st = advanceMaterialTrace([g1(18, 4, 2, 4)], 1);
+        expect(st.gouges.length).toBe(1);
+        expect(worstGouge().depth).toBeGreaterThan(0);
+    });
+});
+
+describe('what the tool is, asked once and not once per block', () => {
+    beforeEach(() => setup());
+
+    test('the nose and the colliders are cached on the tool, not recomputed', () => {
+        const geometry = View.sinumerikView.toolGeometry[TOOL_PATH];
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect(geometry._nose_ZX).toEqual({center: [0.4, 0.4], radius: 0.4});
+        expect(geometry._colliders).toEqual([]);
+    });
+
+    test('a tool with no nose caches that answer too, rather than asking again', () => {
+        // `null` is the answer, and an answer that reads as "not cached yet"
+        // would be recomputed for every block of the program.
+        const geometry = View.sinumerikView.toolGeometry[TOOL_PATH];
+        geometry.sections[0].elements = [];
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect('_nose_ZX' in geometry).toBe(true);
+        expect(geometry._nose_ZX).toBeNull();
+    });
+
+    test('the outline keeps its own convexity and its own box', () => {
+        const section = View.sinumerikView.toolGeometry[TOOL_PATH].sections[0];
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        const outline = section._polygon_ZX;
+        expect(outline._isConvex).toBe(true);
+        expect(outline._box).toEqual({lo0: 0, hi0: 2, lo1: 0, hi1: 2});
+    });
+});
+
+describe('the block being animated, shown without being applied', () => {
+    beforeEach(() => {
+        setup();
+        setPartialFrame(null);
+    });
+    afterEach(() => setPartialFrame(null));
+
+    const pass = [g1(18, 8, 2, 8)];
+
+    test('half a pass paints about half of what the whole pass removes', () => {
+        advanceMaterialTrace(pass, 1);
+        const whole = materialTraceRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+
+        setup();
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.5});
+        const half = materialTracePartialRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+
+        // The tool trails its outline behind the cutting point, so half the
+        // travel is a bit more than half the swept area, never less and never
+        // the whole of it.
+        expect(half).toBeGreaterThan(whole * 0.45);
+        expect(half).toBeLessThan(whole);
+    });
+
+    test('showing the block changes nothing in the grid', () => {
+        const st = advanceMaterialTrace(pass, 0);
+        const before = totalArea(st.grid);
+
+        setPartialFrame({index: 0, fraction: 0.6});
+        expect(materialTracePartialRects().length).toBeGreaterThan(0);
+
+        expect(totalArea(st.grid)).toBeCloseTo(before, 9);
+        expect(st.removed).toBe(0);
+        expect(st.swept).toBe(0);
+        expect(st.undo.length).toBe(0);
+    });
+
+    test('a block already applied is not painted twice', () => {
+        advanceMaterialTrace(pass, 1);
+        const applied = materialTraceRects();
+
+        setPartialFrame({index: 0, fraction: 0.5});
+        expect(materialTracePartialRects()).toEqual([]);
+        expect(materialTraceRects()).toBe(applied);
+    });
+
+    test('the applied material keeps its identity while the block moves', () => {
+        // What the renderer depends on: a frame that only moved the tool leaves
+        // the big list alone, so its geometry stays on the card untouched. And
+        // the applied list holds only what was applied — nothing is applied yet
+        // here, so it is empty however much of the block is being shown.
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.3});
+
+        const applied = materialTraceRects();
+        expect(applied).toEqual([]);
+        expect(materialTracePartialRects().length).toBeGreaterThan(0);
+
+        setPartialFrame({index: 0, fraction: 0.6});
+        expect(materialTraceRects()).toBe(applied);
+        expect(materialTraceRects()).toEqual([]);
+    });
+
+    test('what the block shows depends on how much is applied, not only on the block', () => {
+        // Scrubbing back puts the material back, so the same half-block over the
+        // same ground now has something to take again. The overlay is cached, and
+        // caching it on the block alone would show the earlier answer.
+        const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
+        advanceMaterialTrace(twice, 1);
+        setPartialFrame({index: 1, fraction: 0.5});
+        expect(materialTracePartialRects()).toEqual([]);   // first pass took it all
+
+        advanceMaterialTrace(twice, 0);
+        setPartialFrame({index: 1, fraction: 0.5});
+        expect(materialTracePartialRects().length).toBeGreaterThan(0);
+    });
+
+    test('nothing shown at the very start of a block, or with no partial frame', () => {
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0});
+        expect(materialTracePartialRects()).toEqual([]);
+        setPartialFrame(null);
+        expect(materialTracePartialRects()).toEqual([]);
+    });
+
+    test('moving through the block rebuilds the picture, standing still does not', () => {
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.3});
+        const first = materialTracePartialRects();
+        expect(materialTracePartialRects()).toBe(first);
+
+        setPartialFrame({index: 0, fraction: 0.4});
+        const second = materialTracePartialRects();
+        expect(second).not.toBe(first);
+        expect(second.length).toBeGreaterThan(0);
+    });
+
+    test('what is shown is a subset of what the block goes on to remove', () => {
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.7});
+        const shown = materialTracePartialRects();
+
+        advanceMaterialTrace(pass, 1);
+        setPartialFrame(null);
+        const applied = materialTraceRects();
+
+        const covered = (r) => applied.some(a =>
+            a.a0lo <= r.a0lo + 1e-9 && a.a0hi >= r.a0hi - 1e-9
+            && a.a1lo <= r.a1lo + 1e-9 && a.a1hi >= r.a1hi - 1e-9);
+        expect(shown.length).toBeGreaterThan(0);
+        expect(shown.every(covered)).toBe(true);
+    });
+
+    test('only material still there is painted, not ground already cut', () => {
+        // The same pass twice: the second takes nothing, so there is nothing to
+        // show for it however far into it the animation is.
+        const twice = [g1(18, 8, 2, 8), g1(18, 8, 2, 8)];
+        advanceMaterialTrace(twice, 1);
+
+        setPartialFrame({index: 1, fraction: 0.5});
+        expect(materialTracePartialRects()).toEqual([]);
+    });
+
+    test('a deeper second pass shows only what is left, not the whole depth', () => {
+        // Against the blank instead of the material this would paint from the
+        // outside surface down, and every roughing pass would look like a
+        // full-depth cut.
+        const deeper = [g1(18, 5, 2, 5), g1(18, 4, 2, 4)];
+        advanceMaterialTrace(deeper, 1);
+
+        setPartialFrame({index: 1, fraction: 0.5});
+        const shown = materialTracePartialRects();
+
+        expect(shown.length).toBeGreaterThan(0);
+        // The first pass took 5…7, so the second can only find 4…5 still there.
+        shown.forEach(r => expect(r.a1hi).toBeLessThanOrEqual(5 + 1e-6));
+    });
+
+    test('a block with no tool outline shows nothing', () => {
+        setup({toolGeometry: null});
+        advanceMaterialTrace(pass, 0);
+        setPartialFrame({index: 0, fraction: 0.5});
+        expect(materialTracePartialRects()).toEqual([]);
+    });
+});
+
+describe('cost of drawing the trace', () => {
+    beforeEach(() => setup());
+
+    test('only the columns the sweep reached are scanned', () => {
+        // The grid spans the whole blank, which on a long part is millions of
+        // columns; removed material can only live where the tool has been.
+        const st = advanceMaterialTrace([g1(18, 8, 12, 8)], 1);
+
+        expect(st.touchedMin).toBeGreaterThan(0);
+        expect(st.touchedMax).toBeLessThan(st.grid.columns - 1);
+        expect(st.touchedMax).toBeGreaterThanOrEqual(st.touchedMin);
+    });
+
+    test('nothing cut, nothing touched', () => {
+        setup({toolGeometry: null});
+        const st = advanceMaterialTrace([g1(18, 8, 12, 8)], 1);
+        expect(st.touchedMin).toBe(Infinity);
+        expect(materialTraceRects()).toEqual([]);
+    });
+
+    test('a redraw that cuts nothing reuses the rectangles it already built', () => {
+        // Pan and zoom go through the same rebuild, and recomputing the whole
+        // trace for a camera move would make them pay for it.
+        const elements = [g1(18, 8, 12, 8)];
+        advanceMaterialTrace(elements, 1);
+
+        const first = materialTraceRects();
+        expect(materialTraceRects()).toBe(first);
+    });
+
+    test('cutting more invalidates the cache', () => {
+        const elements = [g1(18, 8, 12, 8), g1(12, 8, 4, 8)];
+        advanceMaterialTrace(elements, 1);
+        const first = materialTraceRects();
+
+        advanceMaterialTrace(elements, 2);
+        const second = materialTraceRects();
+        expect(second).not.toBe(first);
+        expect(second.length).toBeGreaterThan(0);
+    });
+});
+
+describe('scrubbing the progress bar', () => {
+    beforeEach(() => setup());
+
+    // Clicking the bar or holding ArrowLeft is a first-class interaction
+    // (lib/progressBar.js), and advancing is subtractive, so going back means
+    // restoring an earlier state. Keyframes are what keep that from replaying
+    // the whole program on every keypress — measured at 15 s before they
+    // existed, against single-digit milliseconds with them.
+    // One full-length pass per element, each a little deeper than the last.
+    //
+    // Keyframes are only laid down while they cost a bounded share of the
+    // sweeping they shorten (KEYFRAME_WORK_SHARE), and the sweeping that counts
+    // is columns that still hold material: a pass is charged for the leading
+    // edge that meets stock, not for the length it trails over ground it has
+    // already cut. So a program made of many short collinear moves sweeps almost
+    // nothing — a tenth of a column per move — and correctly gets no keyframes,
+    // which is its own test below. Descending passes do real work and get them.
+    const manyPasses = () => {
+        const els = [];
+        for (let p = 0; p < 80; p++) els.push(g1(18, 9.5 - p * 0.1, 2, 9.5 - p * 0.1));
+        return els;
+    };
+
+    test('keyframes are laid down while advancing', () => {
+        const els = manyPasses();
+        const st = advanceMaterialTrace(els, els.length);
+
+        expect(st.snapshots.length).toBeGreaterThan(1);
+        // One at the blank itself, so any rewind has a floor to land on.
+        expect(st.snapshots[0].at).toBe(0);
+        expect(st.snapshotEvery).toBeGreaterThanOrEqual(1);
+    });
+
+    test('a program too cheap to be worth keyframing gets none, and still scrubs', () => {
+        // A keyframe costs a pass over every column of the grid. On a program
+        // whose whole sweep is smaller than that, keyframes would cost more than
+        // the replay they save, and the right number of them is none — which has
+        // to leave the result identical, only slower to reach.
+        const els = [];
+        for (let k = 0; k < 10; k++) els.push(g1(18 - (k * 16) / 10, 9, 18 - ((k + 1) * 16) / 10, 9));
+
+        advanceMaterialTrace(els, els.length);
+        // eslint-disable-next-line no-unused-vars
+        const st = materialTraceState();
+        expect(st.snapshots.length).toBe(1);
+        expect(st.snapshots[0].at).toBe(0);
+        expect(st.keyframeColumns).toBeLessThanOrEqual(0.25 * st.sweptColumns + st.grid.columns);
+
+        const atEnd = totalArea(st.grid);
+        advanceMaterialTrace(els, 0);
+        advanceMaterialTrace(els, els.length);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(atEnd, 9);
+    });
+
+    test('going back lands on a keyframe instead of rebuilding from the blank', () => {
+        const els = manyPasses();
+        advanceMaterialTrace(els, els.length);
+        const grid = materialTraceState().grid;
+
+        advanceMaterialTrace(els, els.length - 1);
+
+        // Same grid object: the state was restored in place, not rebuilt.
+        expect(materialTraceState().grid).toBe(grid);
+        expect(materialTraceState().appliedUpTo).toBe(els.length - 1);
+    });
+
+    test('a jump forward also uses a keyframe rather than replaying from here', () => {
+        const els = manyPasses();
+        advanceMaterialTrace(els, els.length);
+        const atEnd = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(els, 0);
+        expect(materialTraceState().appliedUpTo).toBe(0);
+
+        advanceMaterialTrace(els, els.length);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(atEnd, 9);
+    });
+
+    test('scrubbing back and forth gives the same material as going straight there', () => {
+        // The property the keyframes rely on: the material after N elements
+        // depends only on the first N, not on the route taken.
+        const els = manyPasses();
+        const target = 37;
+
+        advanceMaterialTrace(els, target);
+        const direct = totalArea(materialTraceState().grid);
+        const directRects = materialTraceRects().length;
+
+        resetMaterialTrace();
+        advanceMaterialTrace(els, els.length);
+        advanceMaterialTrace(els, 5);
+        advanceMaterialTrace(els, els.length - 2);
+        advanceMaterialTrace(els, target);
+
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(direct, 9);
+        expect(materialTraceRects().length).toBe(directRects);
+    });
+
+    test('keyframe memory stays within its budget', () => {
+        const els = manyPasses();
+        const st = advanceMaterialTrace(els, els.length);
+
+        const bytes = st.snapshots.length
+            * (st.grid.starts.byteLength + st.grid.ends.byteLength + st.grid.counts.byteLength);
+        expect(st.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
+        expect(bytes).toBeLessThanOrEqual(SNAPSHOT_BUDGET_BYTES);
+    });
+
+    test('the working pitch is coarse enough to keep up, and exact radially regardless', () => {
+        // 7.8 ms per element at 0.01 mm froze the UI; 0.46 ms at 0.2 mm does
+        // not. Cost is linear in 1/pitch, and only the axial direction is
+        // discretised.
+        const st = advanceMaterialTrace(manyPasses(), 1);
+        expect(st.grid.pitch).toBeCloseTo(MATERIAL_TRACE_PITCH, 10);
+        expect(MATERIAL_TRACE_PITCH).toBeGreaterThanOrEqual(0.1);
+    });
+});
+
+describe('keyframes earn their keep', () => {
+    beforeEach(() => setup());
+
+    const passes = n => {
+        const els = [];
+        for (let p = 0; p < n; p++) {
+            const r = 9 - (p % 8);
+            for (let k = 0; k < 8; k++) els.push(g1(18 - (k * 16) / 8, r, 18 - ((k + 1) * 16) / 8, r));
+        }
+        return els;
+    };
+
+    // `passes` cycles back over radii it has already cut, so after the first
+    // eight it removes nothing and sweeps nothing — which is right, and which
+    // means it never accumulates the work a keyframe has to be worth. These
+    // deepen monotonically, so every pass meets stock and is charged for it.
+    const deepening = n => {
+        const els = [];
+        for (let p = 0; p < n; p++) {
+            const r = 9.5 - (p * 9) / n;
+            els.push(g1(18, r, 2, r));
+        }
+        return els;
+    };
+
+    test('a jump forward sweeps a fraction of the program, not all of it again', () => {
+        // Without the forward shortcut the result would be identical and only
+        // the cost would differ — which is why this counts work instead of
+        // comparing material.
+        //
+        // The bound is the distance back to the nearest keyframe, read from the
+        // keyframe list rather than assumed to be the spacing: keyframes are laid
+        // down in proportion to the work they save, so they are dense where the
+        // cutting is heavy and sparse where it is cheap, not evenly spaced.
+        const els = deepening(80);
+        advanceMaterialTrace(els, els.length);
+        const at = materialTraceState().snapshots.map(snap => snap.at);
+        expect(at.length).toBeGreaterThan(1);
+
+        advanceMaterialTrace(els, 0);
+        const before = materialTraceState().swept;
+        advanceMaterialTrace(els, els.length);
+        const done = materialTraceState().swept - before;
+
+        expect(done).toBe(els.length - Math.max(...at.filter(a => a <= els.length)));
+        expect(done).toBeLessThan(els.length);
+    });
+
+    test('keyframes cost a bounded share of the sweeping, not a share each', () => {
+        // The gate is cumulative: what has already been spent on keyframes is
+        // counted against the work, so the share bounds the whole set and not
+        // each keyframe on its own. Judged against the share rather than a
+        // keyframe count, which is what the share is for.
+        const els = deepening(80);
+        const st = advanceMaterialTrace(els, els.length);
+
+        expect(st.snapshots.length).toBeGreaterThan(1);
+        // Counted from the keyframes themselves — one costs a pass over every
+        // column — rather than read back off the counter that decides it, which
+        // would hold however wrongly that counter was kept. The keyframe at zero
+        // is taken before anything has been swept, so it is the one the share
+        // cannot pay for.
+        expect(st.snapshots.length * st.grid.columns)
+            .toBeLessThanOrEqual(KEYFRAME_WORK_SHARE * st.sweptColumns + st.grid.columns);
+    });
+
+    test('the carried byte total is the real one', () => {
+        // Summed afresh over every keyframe on every keyframe, this was 77% of
+        // the whole trace's running time, so it is carried instead — and a
+        // carried total that drifts would silently stop the memory budget from
+        // ever binding.
+        const els = deepening(80);
+        const st = advanceMaterialTrace(els, els.length);
+
+        const actual = st.snapshots.reduce(
+            (n, snap) => n + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0), 0);
+        expect(st.bytes).toBe(actual);
+    });
+
+    test('a step back sweeps almost nothing', () => {
+        const els = passes(8);
+        advanceMaterialTrace(els, els.length);
+
+        const before = materialTraceState().swept;
+        advanceMaterialTrace(els, els.length - 1);
+        const done = materialTraceState().swept - before;
+
+        // At worst a replay from the nearest keyframe to one element short of
+        // where we were — bounded by the keyframe spacing, never by the
+        // program length. Before keyframes existed this was the whole program,
+        // measured at 15 s.
+        expect(done).toBeLessThanOrEqual(materialTraceState().snapshotEvery);
+    });
+
+    // A keyframe of a given weight, for the thinning tests. Only `runs` is read.
+    const keyframe = (at, boundsPerRun = 1, runs = 1) => ({
+        at,
+        runs: Array.from({length: runs}, () => ({bounds: new Float64Array(boundsPerRun)})),
+    });
+
+    test('past the cap the spacing doubles instead of the memory growing', () => {
+        const snapshots = Array.from({length: MAX_SNAPSHOTS + 1}, (_, i) => keyframe(i));
+        const thinned = thinKeyframes(snapshots, 1, 0);
+
+        expect(thinned.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
+        expect(thinned.every).toBe(2);
+        // Every other one, so the spread stays even and the first is kept: it is
+        // the blank, and a rewind has nothing else to land on.
+        expect(thinned.snapshots[0].at).toBe(0);
+        expect(thinned.snapshots[1].at).toBe(2);
+    });
+
+    test('past the memory budget it thins as well, however few keyframes there are', () => {
+        // The cap is a count and the budget is bytes, and on a long part it is
+        // the bytes that bind first: a grid of thousands of columns makes
+        // keyframes that are individually large. Without this the trace would
+        // hold the whole program in memory one keyframe at a time.
+        const heavy = Math.ceil(SNAPSHOT_BUDGET_BYTES / 8 / 8);
+        const snapshots = Array.from({length: 8}, (_, i) => keyframe(i, heavy));
+        const bytes = snapshots.reduce(
+            (n, snap) => n + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0), 0);
+        expect(bytes).toBeGreaterThan(SNAPSHOT_BUDGET_BYTES);
+
+        const thinned = thinKeyframes(snapshots, 4, bytes);
+        expect(thinned.bytes).toBeLessThanOrEqual(SNAPSHOT_BUDGET_BYTES);
+        expect(thinned.snapshots.length).toBeLessThan(8);
+        expect(thinned.every).toBeGreaterThan(4);
+    });
+
+    test('thinning stops rather than throwing the last keyframes away', () => {
+        // Three cannot be halved to anything useful, so an unmeetable budget
+        // leaves them: losing the floor would mean rebuilding from the blank.
+        const snapshots = [keyframe(0), keyframe(4), keyframe(8)];
+        const thinned = thinKeyframes(snapshots, 4, SNAPSHOT_BUDGET_BYTES * 2);
+        expect(thinned.snapshots).toHaveLength(3);
+        expect(thinned.every).toBe(4);
+    });
+
+    test('a keyframe restores the material exactly', () => {
+        // Keyframes are run-length encoded rather than copied whole — that is
+        // what keeps them affordable on a long part — so the encoding has to
+        // round-trip to the byte, not approximately.
+        const els = passes(8);
+        const target = 30;
+
+        advanceMaterialTrace(els, target);
+        const direct = [];
+        for (let i = 0; i < materialTraceState().grid.columns; i++) {
+            direct.push(getSpans(materialTraceState().grid, i));
+        }
+        const directArea = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(els, els.length);
+        // Force the keyframe path rather than the undo log.
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(els, target);
+
+        const st = materialTraceState();
+        expect(st.appliedUpTo).toBe(target);
+        expect(totalArea(st.grid)).toBeCloseTo(directArea, 9);
+        for (let i = 0; i < st.grid.columns; i++) {
+            expect(getSpans(st.grid, i)).toEqual(direct[i]);
+        }
+    });
+
+    test('the max-radius summary survives a keyframe too', () => {
+        // It is written on every setSpans, but a keyframe writes the arrays
+        // straight — so it has to be rebuilt by the decode, or the holder check
+        // starts rejecting columns that do hold material.
+        const els = passes(8);
+        advanceMaterialTrace(els, 20);
+        const direct = Array.from(materialTraceState().grid.maxRadius);
+
+        advanceMaterialTrace(els, els.length);
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(els, 20);
+
+        expect(Array.from(materialTraceState().grid.maxRadius)).toEqual(direct);
+    });
+});
+
+describe('stepping back one element at a time', () => {
+    beforeEach(() => setup());
+
+    // ArrowLeft is pressed repeatedly, and with keyframes alone each press
+    // restored the nearest one and replayed up to `snapshotEvery` elements —
+    // paying that cost again on every press. The undo log makes a step cost
+    // what the element cost: ten presses measured at 15 ms against ~130 ms.
+    const passes = () => {
+        const els = [];
+        for (let p = 0; p < 6; p++) {
+            const r = 9 - p;
+            for (let k = 0; k < 10; k++) els.push(g1(18 - (k * 16) / 10, r, 18 - ((k + 1) * 16) / 10, r));
+        }
+        return els;
+    };
+
+    test('a record is kept for every element that cut something', () => {
+        const els = passes();
+        const st = advanceMaterialTrace(els, els.length);
+
+        expect(st.undo.length).toBe(els.length);
+        expect(st.undoEntries).toBeGreaterThan(0);
+        expect(st.undo[st.undo.length - 1].at).toBe(els.length - 1);
+    });
+
+    test('an element that cut nothing leaves no record', () => {
+        setup({toolGeometry: null});
+        const st = advanceMaterialTrace(passes(), 5);
+        expect(st.undo.length).toBe(0);
+    });
+
+    test('a step back is undone, not replayed', () => {
+        const els = passes();
+        advanceMaterialTrace(els, els.length);
+
+        const before = materialTraceState().swept;
+        advanceMaterialTrace(els, els.length - 1);
+
+        // Nothing was swept again: the previous spans were simply put back.
+        expect(materialTraceState().swept).toBe(before - 1);
+        expect(materialTraceState().undo.length).toBe(els.length - 1);
+    });
+
+    test('ten steps back do not sweep anything at all', () => {
+        const els = passes();
+        advanceMaterialTrace(els, els.length);
+        const before = materialTraceState().swept;
+
+        for (let k = 1; k <= 10; k++) advanceMaterialTrace(els, els.length - k);
+
+        expect(materialTraceState().swept).toBe(before - 10);
+        expect(materialTraceState().appliedUpTo).toBe(els.length - 10);
+    });
+
+    test('undoing restores exactly the material that was there', () => {
+        // The property the whole log rests on: an undone element leaves the
+        // grid byte-for-byte as it was before it ran.
+        const els = passes();
+        advanceMaterialTrace(els, 40);
+        const at40 = totalArea(materialTraceState().grid);
+        const rectsAt40 = materialTraceRects().length;
+
+        advanceMaterialTrace(els, 55);
+        advanceMaterialTrace(els, 40);
+
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(at40, 9);
+        expect(materialTraceRects().length).toBe(rectsAt40);
+        expect(materialTraceState().removed).toBeGreaterThan(0);
+    });
+
+    test('removed length is unwound along with the material', () => {
+        const els = passes();
+        advanceMaterialTrace(els, 20);
+        const removedAt20 = materialTraceState().removed;
+
+        advanceMaterialTrace(els, 30);
+        advanceMaterialTrace(els, 20);
+
+        expect(materialTraceState().removed).toBeCloseTo(removedAt20, 9);
+    });
+
+    test('restoring a keyframe drops the log, since it no longer ends where we are', () => {
+        const els = passes();
+        advanceMaterialTrace(els, els.length);
+
+        // Rewinding past the log forces the keyframe path.
+        materialTraceState().undo = materialTraceState().undo.slice(-2);
+        materialTraceState().undoEntries = 2;
+        advanceMaterialTrace(els, 5);
+
+        const st = materialTraceState();
+        expect(st.appliedUpTo).toBe(5);
+        // Whatever is in the log now was recorded while replaying forward from
+        // the keyframe, so it still ends exactly where we are.
+        if (st.undo.length) expect(st.undo[st.undo.length - 1].at).toBe(4);
+    });
+
+    test('the log stays within its entry budget', () => {
+        const st = advanceMaterialTrace(passes(), 60);
+        expect(st.undoEntries).toBeLessThanOrEqual(UNDO_BUDGET_ENTRIES);
+    });
+});
+
+describe('undoing an element that cut a column more than once', () => {
+    // Only the FIRST touch of a column may be recorded. Recording every touch
+    // captures the state left by the element's own earlier cuts, so undoing
+    // restores a half-cut column and quietly loses material. One cutting
+    // section with one span per column never exercises that — two overlapping
+    // sections do.
+    const twoSections = () => ({
+        sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 3), g1(2, 3, 0, 3), g1(0, 3, 0, 0)], elements: []},
+            {role: 'cut', shapes: [g1(0, 2, 2, 2), g1(2, 2, 2, 6), g1(2, 6, 0, 6), g1(0, 6, 0, 2)], elements: []},
+        ],
+    });
+
+    test('undoing restores the column completely, not just the last cut', () => {
+        setup({toolGeometry: twoSections()});
+        const elements = [g1(14, 4, 6, 4)];
+
+        advanceMaterialTrace(elements, 0);
+        const seeded = totalArea(materialTraceState().grid);
+
+        advanceMaterialTrace(elements, 1);
+        expect(totalArea(materialTraceState().grid)).toBeLessThan(seeded);
+
+        advanceMaterialTrace(elements, 0);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(seeded, 9);
+        expect(materialTraceRects()).toEqual([]);
+    });
+});
+
+describe('gouges into the finished part', () => {
+    // The part is a shaft of radius 5 inside a blank of radius 10, so anything
+    // the tool takes below radius 5 is a gouge.
+    const part = () => bar(0, 20, 5);
+
+    const cutTo = radius => [g1(18, radius, 2, radius)];
+
+    const setupWithPart = (options = {}) => {
+        setup(options);
+        View.sinumerikView.parseData.contour = options.contour === null ? [] : (options.contour ?? part());
+        resetMaterialTrace();
+    };
+
+    test('an overrun into a face is measured along the axis, not across it', () => {
+        // The user's case in miniature: the part ends at Z 10, and a facing cut
+        // runs a fraction of a millimetre past it. Measured radially — which is
+        // all a column can measure on its own — that reads as the whole height
+        // of the face, which is absurd on a cut 0.3 mm long.
+        setupWithPart({blank: bar(0, 20, 10), contour: bar(0, 10, 10)});
+
+        // Straight down the face at Z 10, taking a sliver off its end.
+        const st = advanceMaterialTrace([g1(9.7, 18, 9.7, 0)], 1);
+
+        expect(st.gouges).toHaveLength(1);
+        const worst = worstGouge();
+        expect(worst.axis).toBe('axial');
+        expect(worst.depth).toBeLessThan(1);
+
+        // Exactly the axial extent of the gouged region — the rectangles the
+        // renderer gets are built from the same columns, so they pin the count
+        // without the test having to guess where the grid starts.
+        const rects = materialTraceGougeRects();
+        const lo = Math.min(...rects.map(r => r.a0lo));
+        const hi = Math.max(...rects.map(r => r.a0hi));
+        expect(worst.depth).toBeCloseTo(hi - lo, 9);
+        expect(worst.depth).toBeGreaterThanOrEqual(st.grid.pitch - 1e-9);
+    });
+
+    test('a cut under the diameter is still measured across it', () => {
+        setupWithPart();
+        const st = advanceMaterialTrace(cutTo(3), 1);
+
+        expect(st.gouges[0].axis).toBe('radial');
+        expect(st.gouges[0].depth).toBeCloseTo(2, 1);
+    });
+
+    test('the report says which way it went in', () => {
+        setupWithPart({blank: bar(0, 20, 10), contour: bar(0, 10, 10)});
+        advanceMaterialTrace([{...g1(9.7, 18, 9.7, 0), row: 7}], 1);
+
+        const line = describeMaterialTrace().find(l => l.startsWith('CUT INTO THE PART'));
+        expect(line).toMatch(/mm axial/);
+    });
+
+    test('a cut that stops above the part is not a gouge', () => {
+        setupWithPart();
+        // The tool square is 2 tall sitting at radius 6, so it reaches down to 6.
+        const st = advanceMaterialTrace(cutTo(6), 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+        expect(worstGouge()).toBeNull();
+    });
+
+    test('a cut reaching into the part is a gouge, with a depth in millimetres', () => {
+        setupWithPart();
+        // Sitting at radius 3 the outline spans 3..5, so it eats 2 mm of part.
+        const st = advanceMaterialTrace(cutTo(3), 1);
+
+        expect(st.gouges).toHaveLength(1);
+        const worst = worstGouge();
+        expect(worst.depth).toBeCloseTo(2, 6);
+        expect(materialTraceGougeRects().length).toBeGreaterThan(0);
+    });
+
+    test('the report says which line did it', () => {
+        setupWithPart();
+        const elements = [{...cutTo(3)[0], row: 42, sourceFile: 'MAIN_MPF'}];
+        advanceMaterialTrace(elements, 1);
+
+        const worst = worstGouge();
+        expect(worst.row).toBe(42);
+        expect(worst.sourceFile).toBe('MAIN_MPF');
+        // And where to look: axial position and the radius reached.
+        expect(worst.Z).toBeGreaterThan(0);
+        expect(worst.X).toBeCloseTo(3, 6);
+    });
+
+    test('the gouged area is the removed material inside the part, and no more', () => {
+        setupWithPart();
+        // The outline is 2 mm tall and the reference point rides at radius 4, so
+        // it spans 4..6 and straddles the part boundary at 5: half of what it
+        // takes is legitimate stock, half is the part.
+        advanceMaterialTrace(cutTo(4), 1);
+
+        const gougeArea = materialTraceGougeRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+        const removedArea = materialTraceRects()
+            .reduce((sum, r) => sum + (r.a0hi - r.a0lo) * (r.a1hi - r.a1lo), 0);
+
+        expect(gougeArea).toBeGreaterThan(0);
+        expect(gougeArea).toBeLessThan(removedArea);
+        expect(gougeArea / removedArea).toBeCloseTo(0.5, 2);
+        expect(worstGouge().depth).toBeCloseTo(1, 6);
+    });
+
+    test('a trajectory inside the part is not by itself a gouge', () => {
+        // The case the plan singles out: with the compensation worked out by
+        // hand the programmed line runs inside the part on every finishing
+        // block. Judging by the path would light up the whole program; only the
+        // swept material counts.
+        setupWithPart();
+
+        // The line runs at radius 4 — inside the part — while the outline sits
+        // above it and takes nothing below 5.
+        const alongInside = [{...g1(18, 4, 2, 4), toolDef: {name: 'T', path: TOOL_PATH}}];
+        setup({toolGeometry: {sections: [{
+            role: 'cut',
+            // Outline from +1 to +3 above the reference point: the tool body is
+            // entirely outside the part while its zero rides inside it.
+            shapes: [g1(0, 1, 2, 1), g1(2, 1, 2, 3), g1(2, 3, 0, 3), g1(0, 3, 0, 1)],
+            elements: [],
+        }]}});
+        View.sinumerikView.parseData.contour = part();
+        resetMaterialTrace();
+
+        const st = advanceMaterialTrace(alongInside, 1);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('with no contour the question cannot be answered, and that is recorded', () => {
+        // Not the same as "no gouges": without a finished part there is nothing
+        // to compare against, and stage 7 has to be able to say so.
+        setupWithPart({contour: null});
+        const st = advanceMaterialTrace(cutTo(3), 1);
+
+        expect(st.partKnown).toBe(false);
+        expect(st.gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('rewinding unwinds the gouges with the material', () => {
+        setupWithPart();
+        const elements = [g1(18, 6, 10, 6), g1(10, 3, 2, 3)];
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().gouges).toEqual([]);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().gouges).toHaveLength(1);
+        expect(materialTraceGougeRects().length).toBeGreaterThan(0);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('re-cutting air already gouged does not report it twice', () => {
+        // Only material actually taken counts, so a second pass through the
+        // same space has nothing left to remove.
+        setupWithPart();
+        const elements = [g1(18, 3, 2, 3), g1(2, 3, 18, 3)];
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().gouges).toHaveLength(1);
+    });
+
+    test('a keyframe carries the gouges, so rewinding past the log clears them', () => {
+        // The undo path covers short steps; a long rewind lands on a keyframe
+        // instead. If the keyframe did not carry the gouge list, a gouge would
+        // survive a rewind to before the element that caused it — reported
+        // against material that is back in place.
+        setupWithPart();
+        const elements = [];
+        for (let k = 0; k < 40; k++) elements.push(g1(18 - k * 0.4, 7, 17.6 - k * 0.4, 7));
+        elements.push(g1(10, 3, 2, 3));          // the gouging block, last
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().gouges).toHaveLength(1);
+
+        // Force the keyframe path rather than the undo log.
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(elements, 10);
+
+        expect(materialTraceState().appliedUpTo).toBe(10);
+        expect(materialTraceState().gouges).toEqual([]);
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('the deepest gouge is the one reported', () => {
+        setupWithPart();
+        const elements = [g1(18, 4, 10, 4), g1(10, 1, 2, 1)];
+        advanceMaterialTrace(elements, 2);
+
+        expect(materialTraceState().gouges.length).toBeGreaterThan(1);
+        const depths = materialTraceState().gouges.map(g => g.depth);
+        expect(worstGouge().depth).toBeCloseTo(Math.max(...depths), 10);
+    });
+});
+
+describe('holder collisions', () => {
+    // A tool built the way a real one is: an insert at the reference point and a
+    // shank trailing it along +a0.
+    //
+    // `a1` grows AWAY from the spindle axis, so a shank above the tip is in air
+    // and can never be the dangerous one. The holder that bites is the one
+    // reaching BELOW the tip, towards the axis — a negative `shankLo`, which is
+    // the real failure: a holder not set back far enough.
+    const withShank = (shankLo = 0, shankHi = 6) => ({
+        sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [
+                g1(2, shankLo, 12, shankLo), g1(12, shankLo, 12, shankHi),
+                g1(12, shankHi, 2, shankHi), g1(2, shankHi, 2, shankLo),
+            ], elements: []},
+        ],
+    });
+
+    const longBlank = () => bar(0, 60, 10);
+
+    test('an ordinary pass is clean, though the shank follows through the same block', () => {
+        // The trap this check is built around. The shank trails the insert, so
+        // within one block it travels through stock the insert cleared moments
+        // earlier — in that very block. Judged against the material as it stood
+        // before the block, every normal cut would report a collision.
+        //
+        // The pass starts at a0 58 so the shank (which sits +2..+12 behind the
+        // reference point) begins clear of the 60 mm blank. Starting further in
+        // would bury it in stock before the tool even moves, which is a genuine
+        // collision and a different test.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        const st = advanceMaterialTrace([g1(58, 8, 10, 8)], 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.collisions).toEqual([]);
+        expect(worstCollision()).toBeNull();
+        expect(materialTraceCollisionRects()).toEqual([]);
+    });
+
+    test('a shank reaching below the tip ploughs through stock', () => {
+        // Riding at radius 8 the insert cuts 8..10; a shank hanging 2 mm below
+        // the tip spans 6..14, and 6..8 is metal the edge never touches.
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        const st = advanceMaterialTrace([g1(58, 8, 10, 8)], 1);
+
+        expect(st.collisions.length).toBeGreaterThan(0);
+        expect(worstCollision().depth).toBeGreaterThan(0);
+        expect(materialTraceCollisionRects().length).toBeGreaterThan(0);
+    });
+
+    test('the report says which line did it and where', () => {
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        const elements = [{...g1(58, 8, 10, 8), row: 77, sourceFile: 'SUB_SPF'}];
+        advanceMaterialTrace(elements, 1);
+
+        const worst = worstCollision();
+        expect(worst.row).toBe(77);
+        expect(worst.sourceFile).toBe('SUB_SPF');
+        expect(worst.Z).toBeGreaterThan(0);
+        expect(Number.isFinite(worst.X)).toBe(true);
+    });
+
+    test('a shank leading into untouched stock does collide', () => {
+        // Travelling the other way the shank runs ahead of the edge, and the
+        // stretch beyond the edge's own sweep is material nothing has cleared.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        const st = advanceMaterialTrace([g1(10, 8, 30, 8)], 1);
+
+        expect(st.collisions.length).toBeGreaterThan(0);
+    });
+
+    test('a shank leading into stock an earlier block cleared does not', () => {
+        // The reason the check has to be sequential: a holder is allowed
+        // anywhere the tool has already been. Same move as above, after a pass
+        // that cleared the ground it runs onto.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        const elements = [g1(58, 8, 5, 8), g1(10, 8, 30, 8)];
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().collisions).toEqual([]);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().collisions).toEqual([]);
+    });
+
+    test('an ignored section never collides, even hanging below the tip', () => {
+        // Shaped exactly like the shank that does collide, so the test turns on
+        // the role and nothing else. An ignore section sitting in clear air
+        // above the tip would pass whether the role were honoured or not.
+        setup({toolGeometry: {sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'ignore', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ]}, blank: longBlank()});
+        const st = advanceMaterialTrace([g1(58, 8, 10, 8)], 1);
+
+        expect(st.collisions).toEqual([]);
+
+        // ...whereas the same shape as a holder does collide.
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        expect(advanceMaterialTrace([g1(58, 8, 10, 8)], 1).collisions.length).toBeGreaterThan(0);
+    });
+
+    test('a section with no ROLE: collides, because the default is body', () => {
+        // Fail-safe: a forgotten role shows a false collision, which is visible
+        // and fixable, rather than a false all-clear in a feature whose purpose
+        // is catching crashes.
+        setup({toolGeometry: {sections: [
+            {role: 'body', shapes: [g1(0, 0, 10, 0), g1(10, 0, 10, 8), g1(10, 8, 0, 8), g1(0, 8, 0, 0)], elements: []},
+        ]}, blank: longBlank()});
+        const st = advanceMaterialTrace([g1(40, 2, 20, 2)], 1);
+
+        expect(st.removed).toBe(0);                 // nothing is marked as cutting
+        expect(st.collisions.length).toBeGreaterThan(0);
+    });
+
+    test('a tool with no holder skips the extra sweep entirely', () => {
+        setup();                                     // the default fixture is cut-only
+        const st = advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect(st.hasBody).toBe(false);
+        expect(st.collisions).toEqual([]);
+    });
+
+    test('rewinding unwinds collisions with the material', () => {
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        const elements = [g1(55, 9, 50, 9), g1(50, 8, 20, 8)];
+
+        advanceMaterialTrace(elements, 1);
+        const quiet = materialTraceState().collisions.length;
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().collisions.length).toBeGreaterThan(quiet);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().collisions.length).toBe(quiet);
+    });
+
+    test('a keyframe carries the collisions', () => {
+        setup({toolGeometry: withShank(-2), blank: longBlank()});
+        // The priming blocks run at radius 12, clear of the 10 mm blank, so the
+        // only collision in the program is the plunge at the end.
+        const elements = [];
+        for (let k = 0; k < 40; k++) elements.push(g1(58 - k * 0.1, 12, 57.9 - k * 0.1, 12));
+        elements.push(g1(50, 8, 20, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().collisions.length).toBeGreaterThan(0);
+
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(elements, 10);
+
+        expect(materialTraceState().appliedUpTo).toBe(10);
+        expect(materialTraceState().collisions).toEqual([]);
+    });
+
+    test('collided columns beyond the cut range are still painted', () => {
+        // A holder can hit stock the tool never touched — that is the point — so
+        // the rectangles cannot be limited to the columns that were cut. Here the
+        // insert sweeps to about a0 42 while the shank reaches 52.
+        setup({toolGeometry: withShank(), blank: longBlank()});
+        advanceMaterialTrace([g1(40, 8, 30, 8)], 1);
+
+        const st = materialTraceState();
+        const cutEdge = st.grid.min + (st.touchedMax + 1) * st.grid.pitch;
+        const rects = materialTraceCollisionRects();
+
+        expect(rects.length).toBeGreaterThan(0);
+        expect(rects.some(r => r.a0hi > cutEdge)).toBe(true);
+    });
+});
+
+describe('a holder that collides everywhere', () => {
+    // A ROLE:body section drawn below the cutting tip strikes on every block. The
+    // report says so hundreds of times over, and carrying on costs ten times the
+    // rest of the trace — 4.8 ms per element against 0.5 for a sound tool. So the
+    // check stops, and records that it did.
+    const belowTip = () => ({
+        sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ],
+    });
+
+    test('the check stops after enough strikes, and says so', () => {
+        setup({toolGeometry: belowTip(), blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 50; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        const st = advanceMaterialTrace(elements, elements.length);
+
+        expect(collisionCheckStopped()).toBe(true);
+        expect(st.collisions.length).toBeLessThan(elements.length);
+        expect(st.collisions.length).toBeGreaterThanOrEqual(COLLISION_GIVEUP);
+    });
+
+    test('a sound tool never trips it', () => {
+        setup({blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 50; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(collisionCheckStopped()).toBe(false);
+    });
+
+    test('rewinding past the point it stopped resumes checking', () => {
+        setup({toolGeometry: belowTip(), blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 50; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(collisionCheckStopped()).toBe(true);
+
+        // Derived from the collision list, so unwinding the list unwinds this
+        // with no flag to remember to reset.
+        advanceMaterialTrace(elements, 5);
+        expect(collisionCheckStopped()).toBe(false);
+    });
+});
+
+describe('a rapid that cuts', () => {
+    // G0 is a positioning move: the control drives it at full traverse and the
+    // edge is not meant to meet anything. The geometry of the cut is the same as
+    // any other, so only the report differs.
+    const g0 = (zs, xs, z, x) => ({...g1(zs, xs, z, x), type: 'G0'});
+
+    beforeEach(() => setup());
+
+    test('a rapid through stock is reported, and still painted', () => {
+        const elements = [g1(18, 12, 18, 12), g0(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 2);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.rapids.length).toBe(1);
+        expect(st.rapids[0].at).toBe(1);
+        expect(worstRapid().depth).toBeGreaterThan(0);
+        // Painted like any other cut — the metal really is gone.
+        expect(materialTraceRects().length).toBeGreaterThan(0);
+    });
+
+    test('a rapid in free air is not', () => {
+        const elements = [g1(18, 12, 18, 12), g0(18, 15, 2, 15)];
+        const st = advanceMaterialTrace(elements, 2);
+        expect(st.rapids).toEqual([]);
+        expect(worstRapid()).toBeNull();
+    });
+
+    test('a cutting move through the same stock is not a rapid', () => {
+        const elements = [g1(18, 12, 18, 12), g1(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 2);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.rapids).toEqual([]);
+    });
+
+    test('the first block of the program is exempt', () => {
+        // Its start point is wherever the parser's axes happened to stand, not a
+        // position the machine was ever at. A program that declares its tool
+        // before its first rapid would otherwise plough out of the blank from
+        // the spindle centre every time.
+        const st = advanceMaterialTrace([g0(0, 0, 2, 8)], 1);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.rapids).toEqual([]);
+    });
+
+    test('it says where, and how deep', () => {
+        const elements = [g1(18, 12, 18, 12), {...g0(18, 8, 2, 8), row: 11}];
+        advanceMaterialTrace(elements, 2);
+
+        const lines = describeMaterialTrace();
+        const line = lines.find(l => l.startsWith('RAPID THROUGH STOCK'));
+        expect(line).toMatch(/in 1 block\(s\)/);
+        expect(line).toMatch(/row 12/);
+        expect(line).toMatch(/mm radial/);
+    });
+
+    test('it is reported above a gouge and below a holder strike', () => {
+        // Both a rapid and a strike break the machine; a gouge spoils the part.
+        setup();
+        View.sinumerikView.parseData.contour = bar(0, 20, 6);
+        resetMaterialTrace();
+
+        const elements = [g1(18, 12, 18, 12), {...g0(18, 4, 2, 4), row: 11}];
+        advanceMaterialTrace(elements, 2);
+
+        const lines = describeMaterialTrace();
+        const rapid = lines.findIndex(l => l.startsWith('RAPID THROUGH STOCK'));
+        const gouge = lines.findIndex(l => l.startsWith('CUT INTO THE PART'));
+        expect(rapid).toBeGreaterThanOrEqual(0);
+        expect(gouge).toBeGreaterThan(rapid);
+    });
+
+    test('stepping back takes it off the list', () => {
+        const elements = [g1(18, 12, 18, 12), g0(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 2);
+        expect(st.rapids.length).toBe(1);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().rapids).toEqual([]);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().rapids.length).toBe(1);
+    });
+
+    test('a keyframe carries them, so a scrub does not lose them', () => {
+        const elements = [];
+        for (let p = 0; p < 40; p++) {
+            const r = 9.5 - p * 0.1;
+            elements.push(g1(18, r, 2, r));
+        }
+        elements.push({...g0(18, 2, 2, 2), row: 50});
+        elements.push(g1(18, 1.5, 2, 1.5));
+
+        const st = advanceMaterialTrace(elements, elements.length);
+        expect(st.rapids.length).toBe(1);
+
+        // Back to the start and forward again, through whatever keyframes exist.
+        advanceMaterialTrace(elements, 0);
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().rapids.length).toBe(1);
+        expect(materialTraceState().rapids[0].row).toBe(50);
+    });
+});
+
+describe('reporting damage', () => {
+    // Only two things are written out: a gouge and a holder strike. The coverage
+    // counters are still kept in the state — the detection depends on them — but
+    // by the user's decision they are not shown.
+    const part = () => bar(0, 20, 5);
+
+    const withPart = (options = {}) => {
+        setup(options);
+        View.sinumerikView.parseData.contour = options.contour === null ? [] : (options.contour ?? part());
+        resetMaterialTrace();
+    };
+
+    const text = () => describeMaterialTrace().join(' | ');
+
+    test('a sound run says nothing at all', () => {
+        withPart();
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect(describeMaterialTrace()).toEqual([]);
+        expect(materialTraceReport().checked).toBe(1);
+    });
+
+    test('blocks that could not be checked are counted but not announced', () => {
+        withPart({toolGeometry: null});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+
+        expect(materialTraceReport().skippedTool).toBe(1);
+        expect(describeMaterialTrace()).toEqual([]);
+    });
+
+    test('a block in another plane is likewise counted, not announced', () => {
+        withPart();
+        advanceMaterialTrace([g1(18, 8, 2, 8, {workPlane: 'G17'})], 1);
+
+        expect(materialTraceReport().skippedPlane).toBe(1);
+        expect(describeMaterialTrace()).toEqual([]);
+    });
+
+    test('a missing contour is recorded, and simply yields no gouges', () => {
+        withPart({contour: null});
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+
+        expect(materialTraceReport().partKnown).toBe(false);
+        expect(materialTraceReport().gouges.count).toBe(0);
+        expect(describeMaterialTrace()).toEqual([]);
+    });
+
+    test('a gouge is reported with its depth, place and line', () => {
+        withPart();
+        advanceMaterialTrace([{...g1(18, 3, 2, 3), row: 11, sourceFile: 'MAIN_MPF'}], 1);
+
+        expect(materialTraceReport().gouges.count).toBe(1);
+        expect(text()).toMatch(/CUT INTO THE PART in 1 block\(s\)/);
+        expect(text()).toMatch(/mm radial/);
+        expect(text()).toMatch(/row 12/);            // rows are shown 1-based
+    });
+
+    test('a radial position is shown as a diameter when the program works in diameters', () => {
+        // X is held in radii all the way through, so a position shown to the
+        // operator has to be doubled back. A factor of two in a gouge report is
+        // exactly what would destroy trust in it.
+        withPart();
+        View.sinumerikView.parseData.diamon = 1;
+        resetMaterialTrace();
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+
+        // The gouge reaches radius 3, so the diameter is 6 — assert the number,
+        // not just the symbol, because the symbol appears either way.
+        expect(text()).toMatch(/⌀6\.000/);
+
+        View.sinumerikView.parseData.diamon = 0;
+        resetMaterialTrace();
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+        expect(text()).not.toMatch(/⌀/);
+        expect(text()).toMatch(/X3\.000/);
+    });
+
+    test('a holder strike is listed before a gouge', () => {
+        // A gouge spoils the part; a holder strike breaks the machine.
+        withPart({toolGeometry: {sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ]}});
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
+
+        const lines = describeMaterialTrace();
+        expect(lines[0]).toMatch(/HOLDER HIT STOCK/);
+        expect(lines.some(l => /CUT INTO THE PART/.test(l))).toBe(true);
+    });
+
+    test('a stopped holder check says later blocks are not checked', () => {
+        setup({toolGeometry: {sections: [
+            {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
+            {role: 'body', shapes: [g1(2, -2, 12, -2), g1(12, -2, 12, 6), g1(12, 6, 2, 6), g1(2, 6, 2, -2)], elements: []},
+        ]}, blank: bar(0, 600, 10)});
+        const elements = [];
+        for (let k = 0; k < COLLISION_GIVEUP + 20; k++) elements.push(g1(590 - k, 8, 589 - k, 8));
+
+        advanceMaterialTrace(elements, elements.length);
+
+        expect(materialTraceReport().collisions.stopped).toBe(true);
+        expect(text()).toMatch(/Holder checking stopped/);
+    });
+
+    test('nothing to say when the trace never ran', () => {
+        resetMaterialTrace();
+        expect(materialTraceReport().status).toBe('noTrace');
+        expect(describeMaterialTrace()).toEqual([]);
+
+        withPart({machineType: 'Mill'});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+        expect(describeMaterialTrace()).toEqual([]);
+    });
+
+    test('the report follows a rewind', () => {
+        withPart();
+        const elements = [g1(18, 8, 10, 8), g1(10, 3, 2, 3)];
+
+        advanceMaterialTrace(elements, 2);
+        expect(describeMaterialTrace()).toHaveLength(1);
+
+        advanceMaterialTrace(elements, 1);
+        expect(describeMaterialTrace()).toEqual([]);
+    });
+});
+
+describe('approaching and leaving a compensated contour', () => {
+    const referencePointOf = (elements, index) => toolReferenceSegment(elements, index, 'Z', 'X');
+
+    // The shape of the user's program: the approach runs along one axis and the
+    // first contour block along the other. The control (NORM) finishes the
+    // approach standing normal to the CONTOUR, so that block starts tangent.
+    //
+    // Modelled on a flange: a face at Z 40 with the part behind it, and stock
+    // to clear in front of it.
+    const nosedOutline = (r, segments = 24) => {
+        const points = [[r, 0]];
+        for (let k = 1; k <= segments; k++) {
+            const a = (Math.PI / 2) * (k / segments);
+            points.push([r - r * Math.sin(a), r - r * Math.cos(a)]);
+        }
+        points.push([0, 8], [8, 8], [8, 0]);
+
+        const shapes = [];
+        points.forEach((p, i) => {
+            const q = points[(i + 1) % points.length];
+            shapes.push(g1(p[0], p[1], q[0], q[1]));
+        });
+        return shapes;
+    };
+
+    const tool = (r = 0.4) => ({
+        sections: [{role: 'cut', shapes: nosedOutline(r), elements: [{type: 'arc', radius: r, center: [r, 0, r]}]}],
+    });
+
+    const withPart = () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 25)});
+        View.sinumerikView.parseData.contour = bar(0, 40, 25);
+        resetMaterialTrace();
+    };
+
+    //  Z 55 ──────> Z 40 at X 20, then out to X 25 along the face.
+    const program = () => [
+        {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+        {...g1(40, 20, 40, 25), toolRadiusCompensation: 'G42'},
+    ];
+
+    test('the approach stops at the contour instead of cutting past it', () => {
+        withPart();
+        const st = advanceMaterialTrace(program(), 1);
+
+        // Taking the normal from the approach block's own direction turns the
+        // offset through 90°, which drives the nose a radius past the face and
+        // into the part — and nothing later takes that back.
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('and the whole contour runs clean', () => {
+        withPart();
+        const st = advanceMaterialTrace(program(), 2);
+        expect(st.gouges).toEqual([]);
+        expect(worstGouge()).toBeNull();
+    });
+
+    test('the approach ends where the contour block begins', () => {
+        // The invariant underneath: one point, reached two ways.
+        withPart();
+        const elements = program();
+        const first = referencePointOf(elements, 0);
+        const second = referencePointOf(elements, 1);
+
+        expect(first.to[0]).toBeCloseTo(second.from[0], 9);
+        expect(first.to[1]).toBeCloseTo(second.from[1], 9);
+    });
+
+    test('a neighbour that does not move in the plane lends no direction', () => {
+        // The block after the approach is compensated but moves only out of the
+        // plane, so it has no normal to lend. Falling back to the approach's own
+        // direction is approximate; dropping the correction altogether would put
+        // the tool a whole nose radius out, which is not.
+        withPart();
+        const elements = [
+            {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+            {...g1(40, 20, 40, 20), Y: 5, toolRadiusCompensation: 'G42'},
+        ];
+        const cp = referencePointOf(elements, 0);
+
+        expect(cp.to[0] === 40 && cp.to[1] === 20).toBe(false);
+        const ownWay = referencePointOf(
+            [{...elements[0]}, {...g1(40, 20, 20, 20), toolRadiusCompensation: 'G42'}], 0);
+        expect(cp.to[0]).toBeCloseTo(ownWay.to[0], 9);
+        expect(cp.to[1]).toBeCloseTo(ownWay.to[1], 9);
+    });
+
+    test('the tool is drawn where the material is taken from, not on the line', () => {
+        // The picture and the cut have to come from one formula. Under G41/G42
+        // the programmed line is the finished surface, and the tool stands a
+        // nose radius off it — drawing it on the line left it hanging in the
+        // air beside the material it had just removed.
+        withPart();
+        const elements = program();
+        const cp = referencePointOf(elements, 1);
+        const where = toolPositionAt(elements, 1, 1);
+
+        expect(where.Z).toBeCloseTo(cp.to[0], 9);
+        expect(where.X).toBeCloseTo(cp.to[1], 9);
+        expect(where.X).not.toBeCloseTo(elements[1].X, 6);   // not the programmed point
+        expect(where.Y).toBe(0);                             // the axis out of the plane
+
+        // And on a block whose offset lies along the other axis, so that both
+        // coordinates are covered: facing shifts X, turning shifts Z.
+        const turning = [{...g1(40, 25, 20, 25), toolRadiusCompensation: 'G42'}];
+        const along = toolPositionAt(turning, 0, 1);
+        const path = referencePointOf(turning, 0);
+        expect(along.Z).toBeCloseTo(path.to[0], 9);
+        expect(along.Z).not.toBeCloseTo(turning[0].Z, 6);
+        expect(along.X).toBeCloseTo(path.to[1], 9);
+    });
+
+    test('part way through a block it is part way along the reference path', () => {
+        withPart();
+        const elements = program();
+        const cp = referencePointOf(elements, 0);
+        const half = toolPositionAt(elements, 0, 0.5);
+
+        expect(half.Z).toBeCloseTo((cp.from[0] + cp.to[0]) / 2, 9);
+        expect(half.X).toBeCloseTo((cp.from[1] + cp.to[1]) / 2, 9);
+    });
+
+    test('a plane the compensation is not modelled in keeps the programmed point', () => {
+        // Milling: no privileged pair of axes, and under G40 the reference point
+        // IS the programmed point.
+        withPart();
+        const milled = {...g1(55, 20, 40, 20), workPlane: 'G17'};
+        const where = toolPositionAt([milled], 0, 1);
+        expect(where).toEqual({X: 20, Y: 0, Z: 40});
+    });
+
+    test('a block with no geometry has no position', () => {
+        expect(toolPositionAt([{type: 'msg', value: 'hi'}], 0, 1)).toBeNull();
+        expect(toolPositionAt([], 0, 1)).toBeNull();
+    });
+
+    test('a departure leaves from where the contour ended', () => {
+        withPart();
+        const elements = [
+            {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+            {...g1(40, 20, 40, 25), toolRadiusCompensation: 'G42'},
+            {...g1(40, 25, 42, 25), toolRadiusCompensation: 'Departure'},
+        ];
+        const contour = referencePointOf(elements, 1);
+        const away = referencePointOf(elements, 2);
+
+        expect(away.from[0]).toBeCloseTo(contour.to[0], 9);
+        expect(away.from[1]).toBeCloseTo(contour.to[1], 9);
+        // And it gives the correction back by the end of the block.
+        expect(away.to[0]).toBeCloseTo(42, 9);
+        expect(away.to[1]).toBeCloseTo(25, 9);
+    });
+});
+
+describe('corners between two compensated blocks', () => {
+    const referencePointOf = (elements, index) => toolReferenceSegment(elements, index, 'Z', 'X');
+    const cornerArcOf = (elements, index) => toolCornerArc(elements, index, 'Z', 'X');
+    const NOSE = 2.4;
+
+    // An insert with a real nose, declared the way a tool file declares it:
+    // `; T103 R2.4` puts the nose centre at (r, r) from the tool's zero point.
+    const tool = (r = NOSE) => ({
+        variables: {$TC_DP2: '3', $TC_DP6: String(r)},
+        sections: [{
+            role: 'cut',
+            shapes: [g1(0, 0, 12, 0), g1(12, 0, 12, 12), g1(12, 12, 0, 12), g1(0, 12, 0, 0)],
+            elements: [],
+        }],
+    });
+
+    const g42 = (zs, xs, z, x) => ({...g1(zs, xs, z, x), toolRadiusCompensation: 'G42'});
+    const noseCentre = (p, r = NOSE) => [p[0] + r, p[1] + r];
+
+    // Down the shaft and out along the shoulder. The material fills the corner
+    // from both sides, so the nose rolls INTO it until it touches both faces and
+    // leaves a fillet — the two offset paths cross, and the control stops each
+    // block there.
+    const intoTheCorner = () => [g42(40, 20, 20, 20), g42(20, 20, 20, 26)];
+
+    // The same pair the other way round, on a corner the material only fills
+    // from behind: the nose has to roll AROUND the corner point, and the two
+    // offset paths part company instead of crossing.
+    const roundTheCorner = () => [g42(20, 26, 20, 20), g42(20, 20, 40, 20)];
+
+    test('a corner filled from both sides stops both blocks where they cross', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = intoTheCorner();
+
+        const first = referencePointOf(elements, 0);
+        const second = referencePointOf(elements, 1);
+
+        // One point, reached from either side — nothing left to bridge.
+        expect(first.to[0]).toBeCloseTo(second.from[0], 9);
+        expect(first.to[1]).toBeCloseTo(second.from[1], 9);
+        expect(cornerArcOf(elements, 0)).toBeNull();
+
+        // And the nose sits against both faces at once, which is what a fillet
+        // in the corner means.
+        const centre = noseCentre(first.to);
+        expect(centre[0]).toBeCloseTo(20 + NOSE, 9);     // clear of the shoulder
+        expect(centre[1]).toBeCloseTo(20 + NOSE, 9);     // clear of the shaft
+    });
+
+    test('and it stops short of where each block would have run alone', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = intoTheCorner();
+        const trimmed = referencePointOf(elements, 0);
+
+        const alone = referencePointSegment([40, 20], [20, 20], {
+            compensation: 'G42', nose: {center: [NOSE, NOSE], radius: NOSE},
+        });
+        // Travelling -Z, stopping earlier means stopping at a larger Z.
+        expect(trimmed.to[0]).toBeGreaterThan(alone.to[0] + 1);
+        expect(trimmed.to[1]).toBeCloseTo(alone.to[1], 9);
+    });
+
+    test('running past the crossing is a gouge, and it no longer happens', () => {
+        // Each block carrying on to its own end takes a bite out of the face the
+        // other one is cutting, up to a nose radius deep.
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 26);
+        resetMaterialTrace();
+
+        const st = advanceMaterialTrace(intoTheCorner(), 2);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('a corner the material does not fill is rolled around, not cut across', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = roundTheCorner();
+
+        const first = referencePointOf(elements, 0);
+        const second = referencePointOf(elements, 1);
+        const arc = cornerArcOf(elements, 0);
+
+        // The two offset paths really do part, and the arc closes the gap.
+        expect(Math.hypot(first.to[0] - second.from[0], first.to[1] - second.from[1]))
+            .toBeCloseTo(NOSE * Math.SQRT2, 6);
+        expect(arc.length).toBeGreaterThan(2);
+        expect(arc[0]).toEqual(first.to);
+        expect(arc[arc.length - 1][0]).toBeCloseTo(second.from[0], 9);
+        expect(arc[arc.length - 1][1]).toBeCloseTo(second.from[1], 9);
+    });
+
+    test('the nose keeps its own radius from the corner the whole way round', () => {
+        // The invariant the arc exists for. Cutting across the gap instead would
+        // drive the nose r(1-cos45) = 0.7 mm into the corner of the part.
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const arc = cornerArcOf(roundTheCorner(), 0);
+
+        arc.forEach(p => {
+            const centre = noseCentre(p);
+            const away = Math.hypot(centre[0] - 20, centre[1] - 20);
+            expect(away).toBeLessThanOrEqual(NOSE + 1e-9);
+            expect(away).toBeGreaterThanOrEqual(NOSE - CORNER_TOLERANCE_MM);
+        });
+    });
+
+    test('rolling round the corner takes the stock that would otherwise stand', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = roundTheCorner();
+        const st = advanceMaterialTrace(elements, 1);
+        const afterBlock = st.removed;
+
+        // The arc belongs to the block that arrives at the corner, so it is
+        // already counted here — and it is not nothing.
+        expect(afterBlock).toBeGreaterThan(0);
+        const columns = st.touchedMax - st.touchedMin;
+        expect(columns).toBeGreaterThan(0);
+    });
+
+    test('a corner too slight to matter is left alone', () => {
+        // Every joint of a tessellated arc is a corner of a degree or so, and
+        // the error at one is r(1-cos θ/2) — microns. Paying for them would cost
+        // more than the arcs themselves do.
+        setup({toolGeometry: tool(0.4), blank: bar(0, 60, 30)});
+        const shallow = [g42(40, 20, 30, 20), g42(30, 20, 20, 20.05)];
+        const alone = referencePointSegment([40, 20], [30, 20], {
+            compensation: 'G42', nose: {center: [0.4, 0.4], radius: 0.4},
+        });
+
+        expect(referencePointOf(shallow, 0).to[0]).toBeCloseTo(alone.to[0], 9);
+        expect(referencePointOf(shallow, 0).to[1]).toBeCloseTo(alone.to[1], 9);
+        expect(cornerArcOf(shallow, 0)).toBeNull();
+    });
+
+    test('blocks that do not meet are not a corner', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const apart = [g42(40, 20, 30, 20), g42(28, 20, 28, 26)];
+        const alone = referencePointSegment([40, 20], [30, 20], {
+            compensation: 'G42', nose: {center: [NOSE, NOSE], radius: NOSE},
+        });
+
+        expect(referencePointOf(apart, 0).to[0]).toBeCloseTo(alone.to[0], 9);
+        expect(referencePointOf(apart, 0).to[1]).toBeCloseTo(alone.to[1], 9);
+        expect(cornerArcOf(apart, 0)).toBeNull();
+    });
+
+    test('an approach needs no corner treatment — it already lands on the contour', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = [
+            {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+            g42(40, 20, 40, 26),
+        ];
+        const approach = referencePointOf(elements, 0);
+        const contour = referencePointOf(elements, 1);
+
+        expect(approach.to[0]).toBeCloseTo(contour.from[0], 9);
+        expect(approach.to[1]).toBeCloseTo(contour.from[1], 9);
+        expect(cornerArcOf(elements, 0)).toBeNull();
+    });
+});
+
+describe('checking the painted boundary against the programmed path', () => {
+    // The one failure that gives nothing else away. Under G41/G42 the control
+    // keeps the nose tangent to the programmed path, so the surface a block
+    // leaves IS that path. The outline is placed at the reference point and the
+    // offset to the nose comes from the file's geometry — so a file drawn about
+    // the wrong point puts every boundary a constant distance off, with no
+    // crash and no warning, and every gouge depth read off it is wrong too.
+
+    // An outline with a real rounded nose, as a tool file has: the arc is
+    // centred at (r, r) from the reference point and tangent to both flanks, so
+    // the lowest point of the tool in any direction is the point where that arc
+    // touches. A square corner standing in for a nose is not good enough here —
+    // its lowest point is the reference point itself, which sits on the path
+    // only when the path runs along an axis, and drifts with the slope on a
+    // taper.
+    const nosedOutline = (r, segments = 24) => {
+        const points = [[r, 0]];
+        for (let k = 1; k <= segments; k++) {
+            const a = (Math.PI / 2) * (k / segments);
+            points.push([r - r * Math.sin(a), r - r * Math.cos(a)]);
+        }
+        points.push([0, 4], [4, 4], [4, 0]);
+
+        const shapes = [];
+        points.forEach((p, i) => {
+            const q = points[(i + 1) % points.length];
+            shapes.push(g1(p[0], p[1], q[0], q[1]));
+        });
+        return shapes;
+    };
+
+    const soundTool = (r = 0.4) => ({
+        sections: [{role: 'cut', shapes: nosedOutline(r), elements: [{type: 'arc', radius: r, center: [r, 0, r]}]}],
+    });
+
+    // The same outline with its nose DECLARED somewhere else — the file drawn
+    // about a point that is not the one the control compensates about.
+    const misdrawnTool = (r = 0.4, slip = 0.6) => ({
+        sections: [{role: 'cut', shapes: nosedOutline(r), elements: [{type: 'arc', radius: r, center: [r + slip, 0, r + slip]}]}],
+    });
+
+    // Travelling towards -a0 with the tool outside the work, the side that puts
+    // it there under the convention this package already ships (offn.js:44,
+    // where G41 is +90° from the direction of travel) is G42.
+    const compensated = (zs, xs, z, x) => ({...g1(zs, xs, z, x), toolRadiusCompensation: 'G42'});
+
+    const run = (tool, element) => {
+        setup({toolGeometry: tool, blank: bar(0, 60, 20)});
+        return advanceMaterialTrace([element], 1);
+    };
+
+    test('a sound tool leaves its boundary on the programmed line', () => {
+        const st = run(soundTool(), compensated(50, 10, 10, 10));
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.offContour).toEqual([]);
+        expect(worstOffContour()).toBeNull();
+    });
+
+    test('the distance reported is the one across the path, not along a column', () => {
+        // A column can only measure radially, and the steeper the block the more
+        // that reading exceeds the real distance: a tool 0.017 out came back as
+        // 0.055 where a rounding ran at 4:1. What the check means to say is how
+        // far the boundary lies from the line, so the reading is projected onto
+        // the block's own normal — and then it matches the displacement of the
+        // tool, whatever the slope.
+        const slip = 0.1;
+        const across = (el) => {
+            // The outline's nose is at (r, r) and the declaration says
+            // (r + slip, r + slip), so the whole boundary is displaced by that.
+            const d = [el.Z - el.Z_start, el.X - el.X_start];
+            const len = Math.hypot(d[0], d[1]);
+            return Math.abs((-slip * d[1] + -slip * -d[0]) / len);
+        };
+
+        const cylinder = compensated(50, 10, 10, 10);
+        run(misdrawnTool(0.4, slip), cylinder);
+        expect(worstOffContour().deviation).toBeCloseTo(across(cylinder), 3);
+
+        // Four of X for every one of Z: measured radially this reads 0.5, four
+        // times the distance the tool is actually out by.
+        const steep = compensated(50, 6, 45, 26);
+        run(misdrawnTool(0.4, slip), steep);
+        expect(worstOffContour().deviation).toBeCloseTo(across(steep), 2);
+        expect(worstOffContour().deviation).toBeLessThan(0.2);
+    });
+
+    test('a drawing that rounds differently from the declared nose is tolerated', () => {
+        // A real tool file: its arc endpoints are mutually inconsistent with the
+        // declared nose by 0.016 in one coordinate, which puts the drawn centre
+        // 0.024 off. That is authoring slack, not a compensation error, and the
+        // tolerance is set to clear it.
+        const st = run(misdrawnTool(0.4, 0.024), compensated(50, 10, 10, 10));
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('and anything of the order a wrong reference point gives is not', () => {
+        // The error this exists for is the file drawn about a different point:
+        // for cutting-edge positions 1…8 that is r·√2 — 0.57 mm on a 0.4 nose.
+        const st = run(misdrawnTool(0.4, 0.1), compensated(50, 10, 10, 10));
+        expect(st.offContour.length).toBe(1);
+        expect(worstOffContour().deviation).toBeGreaterThan(OFF_CONTOUR_TOLERANCE);
+    });
+
+    test('a nose declared off its true place is caught, with the distance', () => {
+        const st = run(misdrawnTool(0.4, 0.6), compensated(50, 10, 10, 10));
+
+        expect(st.offContour.length).toBe(1);
+        expect(worstOffContour().deviation).toBeCloseTo(0.6, 2);
+    });
+
+    test('the report says it first, because it invalidates the rest', () => {
+        setup({toolGeometry: misdrawnTool(0.4, 0.6), blank: bar(0, 60, 20)});
+        View.sinumerikView.parseData.contour = bar(0, 60, 5);
+        resetMaterialTrace();
+        advanceMaterialTrace([{...compensated(50, 10, 10, 10), row: 20}], 1);
+
+        const lines = describeMaterialTrace();
+        expect(lines[0]).toMatch(/TRACE IS OFF by 0\.\d+ mm/);
+        expect(lines[0]).toMatch(/row 21/);
+        expect(lines[0]).toMatch(/depths below are wrong/);
+    });
+
+    test('an uncompensated block is not checked — its line is the tool centre', () => {
+        // Under G40 the programmed path is the reference point itself, and the
+        // boundary is a tool radius away from it by design.
+        const st = run(soundTool(), g1(50, 10, 10, 10));
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('an approach is not checked — the correction is only part applied', () => {
+        setup({toolGeometry: misdrawnTool(), blank: bar(0, 60, 20)});
+        const elements = [
+            {...g1(50, 10, 30, 10), toolRadiusCompensation: 'Approach'},
+            {...g1(30, 10, 10, 10), toolRadiusCompensation: 'G42'},
+        ];
+        const st = advanceMaterialTrace(elements, 1);
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('a facing cut is not judged — it lives inside one column', () => {
+        // The boundary of a block that barely spans a column varies across the
+        // whole of it, so columns cannot say where it lies.
+        const st = run(misdrawnTool(), compensated(30, 18, 30, 4));
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('a taper is judged on its own line, not on a level one', () => {
+        const sound = run(soundTool(), compensated(50, 6, 10, 14));
+        expect(sound.offContour).toEqual([]);
+
+        const bent = run(misdrawnTool(0.4, 0.8), compensated(50, 6, 10, 14));
+        expect(bent.offContour.length).toBe(1);
+    });
+
+    test('a steep taper is still judged, and still passes', () => {
+        // The tolerance needs no allowance for slope. Columns are scanned along
+        // their centre line rather than averaged across their width, so the
+        // axial pitch never enters the comparison: measured residual here, on a
+        // 4:1 taper, is 0.0002 mm against a tolerance of 0.02. What the slope
+        // does punish is comparing against the block's END value instead of the
+        // line the column is actually scanned on — that is out by the slope
+        // times half the block, and this is the test that says so.
+        setup({toolGeometry: soundTool(), blank: bar(0, 80, 60)});
+        const st = advanceMaterialTrace([compensated(60, 6, 50, 46)], 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('a block that cut nothing has no boundary to judge', () => {
+        // Travelling through air leaves no surface behind.
+        const st = run(misdrawnTool(), compensated(50, 40, 10, 40));
+        expect(st.removed).toBe(0);
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('the wrong side is caught too, and that is the point', () => {
+        // G41 here puts the tool on the far side of the path, so the boundary
+        // lands a full tool offset away. If this fired on every compensated
+        // block of a real program it would mean the G41/G42 handedness taken
+        // from offn.js does not match the machine — which is exactly the kind of
+        // silent mismatch this check exists to surface.
+        const st = run(soundTool(), {...g1(50, 10, 10, 10), toolRadiusCompensation: 'G41'});
+
+        expect(st.offContour.length).toBe(1);
+        expect(worstOffContour().deviation).toBeGreaterThan(0.5);
+    });
+
+    test('rewinding unwinds it with the material', () => {
+        setup({toolGeometry: misdrawnTool(), blank: bar(0, 60, 20)});
+        const elements = [g1(55, 19, 52, 19), compensated(50, 10, 10, 10)];
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().offContour.length).toBe(1);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().offContour).toEqual([]);
+    });
+
+    test('a keyframe carries it', () => {
+        setup({toolGeometry: misdrawnTool(), blank: bar(0, 600, 20)});
+        const elements = [];
+        for (let k = 0; k < 40; k++) elements.push(g1(590 - k, 25, 589 - k, 25));
+        elements.push(compensated(500, 10, 100, 10));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().offContour.length).toBe(1);
+
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(elements, 10);
+        expect(materialTraceState().offContour).toEqual([]);
+    });
+});
+
+describe('advancing under a time budget', () => {
+    // Jumping forward into ground the program has not covered cannot be short
+    // cut — the material at a block is what every block before it left — so the
+    // only thing that can be done about a long jump is to stop it locking the
+    // window. The caller advances what it can in a frame and comes back.
+    const long = () => {
+        const els = [];
+        for (let p = 0; p < 40; p++) {
+            const r = 9 - (p % 8);
+            for (let k = 0; k < 40; k++) els.push(g1(18 - (k * 16) / 40, r, 18 - ((k + 1) * 16) / 40, r));
+        }
+        return els;
+    };
+
+    test('a budget stops it part way, and says how much is owed', () => {
+        setup();
+        const els = long();
+
+        const st = advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+        expect(st.appliedUpTo).toBeGreaterThan(0);
+        expect(st.appliedUpTo).toBeLessThan(els.length);
+        expect(materialTraceOwed(els.length)).toBe(els.length - st.appliedUpTo);
+    });
+
+    test('calling again carries on from where it stopped', () => {
+        setup();
+        const els = long();
+
+        advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+        const part = materialTraceState().appliedUpTo;
+
+        advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+        expect(materialTraceState().appliedUpTo).toBeGreaterThan(part);
+    });
+
+    test('the end state is the same whether it was interrupted or not', () => {
+        // The budget may only change when the work happens, never what it
+        // produces.
+        setup();
+        const els = long();
+
+        advanceMaterialTrace(els, els.length);
+        const whole = totalArea(materialTraceState().grid);
+        const wholeRects = materialTraceRects().length;
+
+        resetMaterialTrace();
+        setup();
+        let guard = 0;
+        while (materialTraceOwed(els.length) > 0 || !materialTraceState()) {
+            advanceMaterialTrace(els, els.length, {msBudget: 0.0001});
+            if (++guard > 10000) break;
+        }
+
+        expect(materialTraceState().appliedUpTo).toBe(els.length);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(whole, 9);
+        expect(materialTraceRects().length).toBe(wholeRects);
+    });
+
+    test('no budget means run to the end, as before', () => {
+        setup();
+        const els = long();
+
+        advanceMaterialTrace(els, els.length);
+        expect(materialTraceState().appliedUpTo).toBe(els.length);
+        expect(materialTraceOwed(els.length)).toBe(0);
+    });
+
+    test('nothing is owed before the trace exists', () => {
+        resetMaterialTrace();
+        expect(materialTraceOwed(500)).toBe(0);
+    });
+});

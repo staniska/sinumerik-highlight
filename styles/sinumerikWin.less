@@ -341,6 +341,16 @@
   // Axes/labels — same hue as syntax text, so they read on any editor background.
   --blank-color: lightgray;
   --contour-color: darkgray;
+  // Stock the tool has removed. Matches the canvas background on purpose, so
+  // the blank is literally erased where the tool has been; a distinct tint here
+  // would instead show cleared stock apart from space that was never blank.
+  --removed-color: white;
+  // Stock taken out of the FINISHED PART. Drawn over the cleared area because it
+  // is a subset of it: erasing stock is routine, eating the part is not.
+  --gouge-color: crimson;
+  // Where the HOLDER met stock that was still there. Above everything: a gouge
+  // spoils the part, a holder strike breaks the machine.
+  --crash-color: darkviolet;
   --axes-color: fade(@syntax-text-color, 50%);
   --axes-text-color: fade(@syntax-text-color, 80%);
   & when (lightness(@base-background-color) < 50%) {
@@ -854,6 +864,53 @@
   box-shadow: 0 0 3px fade(@sin-text, 40%);
 }
 
+// tools.js
+.sinumerik-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 280px;
+}
+
+.sinumerik-tools-close-button {
+  position: absolute;
+  top: -40px;
+  right: -50px;
+  border-radius: 50%;
+  height: 31px;
+  width: 31px;
+  padding: 5px 6px;
+}
+
+.sinumerik-tools-close-button:hover {
+  box-shadow: 0 0 3px fade(@sin-text, 40%);
+}
+
+.sinumerik-tools-machine {
+  color: @sin-text-subtle;
+  padding-bottom: 6px;
+  border-bottom: 1px solid @sin-border;
+  margin-bottom: 6px;
+}
+
+.sinumerik-tools-element {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+
+  &:hover {
+    background-color: @sin-highlight-bg;
+  }
+}
+
+.sinumerik-tools-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .editContourElement_short {
   background-color: @sin-error-bg;
 }
@@ -1093,12 +1150,16 @@
 .sinumerikSLDColorLine--g41 { background: greenyellow; }
 .sinumerikSLDColorLine--g42 { background: springgreen; }
 
-.sinumerikSLDCompMath {
-  border: 1px solid @sin-text-error;
-}
+// single-line-debug.js :: updateMaterialTraceDetails — collisions and gouges,
+// shown in the Details panel so the foot keeps its fixed share of the panel.
+.sinumerikSLDTraceDamage {
+  white-space: pre-line;
+  margin: 5px;
+  padding: 4px 6px;
+  border-left: 3px solid @sin-text-error;
+  color: @sin-text;
 
-.sinumerikSLDCompMathText {
-  width: 100px;
+  &--hidden { display: none; }
 }
 
 .sinumerikSLDInlineLabel {

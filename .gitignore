@@ -6,3 +6,5 @@ node_modules
 /userData/
 CLAUDE.md
 spec/fixtures/
+/docs/
+/.claude/
