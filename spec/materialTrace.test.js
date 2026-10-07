@@ -26,6 +26,9 @@ const {
     componentsAxialRange,
     sweepSegment,
     referencePointSegment,
+    lineIntersection,
+    arcPolyline,
+    CORNER_TOLERANCE,
     pickPitch,
     bytesPerColumn,
     BYTES_PER_INTERVAL,
@@ -1005,5 +1008,68 @@ describe('the convex fast path', () => {
         expect(Math.min(...a1)).toBe(0);
         expect(Math.max(...a1)).toBe(2);
         expect(hull.length).toBe(4);     // the inner corners are not on it
+    });
+});
+
+
+describe('corners between two compensated blocks', () => {
+    test('two lines cross where both equations hold', () => {
+        const at = lineIntersection([0, 0], [1, 0], [3, -5], [0, 1]);
+        expect(at[0]).toBeCloseTo(3, 10);
+        expect(at[1]).toBeCloseTo(0, 10);
+    });
+
+    test('parallel lines do not', () => {
+        expect(lineIntersection([0, 0], [1, 0], [0, 5], [2, 0])).toBeNull();
+        expect(lineIntersection([0, 0], [1, 1], [1, 0], [-2, -2])).toBeNull();
+    });
+
+    test('the arc stays within tolerance of the true curve', () => {
+        const center = [10, 10];
+        const r = 2.4;
+        const points = arcPolyline(center, [10 + r, 10], [10, 10 + r]);   // a right angle
+
+        expect(points.length).toBeGreaterThan(2);
+        points.forEach(p => {
+            expect(Math.hypot(p[0] - center[0], p[1] - center[1])).toBeCloseTo(r, 9);
+        });
+
+        // Every chord's midpoint — the furthest the polyline strays inside.
+        points.slice(1).forEach((p, i) => {
+            const q = points[i];
+            const mid = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+            const sagitta = r - Math.hypot(mid[0] - center[0], mid[1] - center[1]);
+            expect(sagitta).toBeLessThanOrEqual(CORNER_TOLERANCE + 1e-12);
+            expect(sagitta).toBeGreaterThanOrEqual(0);     // inside the arc, never outside
+        });
+    });
+
+    test('it goes the short way round, whichever way that is', () => {
+        const center = [0, 0];
+        const ccw = arcPolyline(center, [1, 0], [0, 1]);
+        const cw = arcPolyline(center, [0, 1], [1, 0]);
+
+        // A quarter turn each way, not three quarters.
+        const angle = (p) => Math.atan2(p[1], p[0]);
+        expect(angle(ccw[1])).toBeGreaterThan(0);
+        expect(angle(ccw[1])).toBeLessThan(Math.PI / 2);
+        expect(angle(cw[1])).toBeGreaterThan(0);
+        expect(angle(cw[1])).toBeLessThan(Math.PI / 2);
+        expect(ccw[ccw.length - 1]).toEqual([0, 1]);
+        expect(cw[cw.length - 1]).toEqual([1, 0]);
+    });
+
+    test('a bigger nose needs more of them, a tighter tolerance too', () => {
+        const small = arcPolyline([0, 0], [0.4, 0], [0, 0.4]).length;
+        const big = arcPolyline([0, 0], [2.4, 0], [0, 2.4]).length;
+        const fine = arcPolyline([0, 0], [2.4, 0], [0, 2.4], CORNER_TOLERANCE / 10).length;
+
+        expect(big).toBeGreaterThan(small);
+        expect(fine).toBeGreaterThan(big);
+    });
+
+    test('a corner with nothing to turn is the chord itself', () => {
+        expect(arcPolyline([0, 0], [1, 0], [1, 0])).toEqual([[1, 0], [1, 0]]);
+        expect(arcPolyline([5, 5], [5, 5], [5, 5])).toEqual([[5, 5], [5, 5]]);
     });
 });

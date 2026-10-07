@@ -21,6 +21,7 @@ const {
     toolReferenceSegment,
     toolReferencePoint,
     toolPositionAt,
+    toolCornerArc,
     noseOf,
     materialTraceGougeRects,
     worstGouge,
@@ -45,7 +46,7 @@ const {
     describeMaterialTrace,
     setPartialFrame,
 } = require('../lib/materialTraceRun');
-const {getSpans, totalArea} = require('../lib/materialTrace');
+const {getSpans, totalArea, referencePointSegment, CORNER_TOLERANCE: CORNER_TOLERANCE_MM} = require('../lib/materialTrace');
 
 const TOOL_PATH = '/t/turn35.mpf';
 
@@ -1843,6 +1844,166 @@ describe('approaching and leaving a compensated contour', () => {
         // And it gives the correction back by the end of the block.
         expect(away.to[0]).toBeCloseTo(42, 9);
         expect(away.to[1]).toBeCloseTo(25, 9);
+    });
+});
+
+describe('corners between two compensated blocks', () => {
+    const referencePointOf = (elements, index) => toolReferenceSegment(elements, index, 'Z', 'X');
+    const cornerArcOf = (elements, index) => toolCornerArc(elements, index, 'Z', 'X');
+    const NOSE = 2.4;
+
+    // An insert with a real nose, declared the way a tool file declares it:
+    // `; T103 R2.4` puts the nose centre at (r, r) from the tool's zero point.
+    const tool = (r = NOSE) => ({
+        variables: {$TC_DP2: '3', $TC_DP6: String(r)},
+        sections: [{
+            role: 'cut',
+            shapes: [g1(0, 0, 12, 0), g1(12, 0, 12, 12), g1(12, 12, 0, 12), g1(0, 12, 0, 0)],
+            elements: [],
+        }],
+    });
+
+    const g42 = (zs, xs, z, x) => ({...g1(zs, xs, z, x), toolRadiusCompensation: 'G42'});
+    const noseCentre = (p, r = NOSE) => [p[0] + r, p[1] + r];
+
+    // Down the shaft and out along the shoulder. The material fills the corner
+    // from both sides, so the nose rolls INTO it until it touches both faces and
+    // leaves a fillet — the two offset paths cross, and the control stops each
+    // block there.
+    const intoTheCorner = () => [g42(40, 20, 20, 20), g42(20, 20, 20, 26)];
+
+    // The same pair the other way round, on a corner the material only fills
+    // from behind: the nose has to roll AROUND the corner point, and the two
+    // offset paths part company instead of crossing.
+    const roundTheCorner = () => [g42(20, 26, 20, 20), g42(20, 20, 40, 20)];
+
+    test('a corner filled from both sides stops both blocks where they cross', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = intoTheCorner();
+
+        const first = referencePointOf(elements, 0);
+        const second = referencePointOf(elements, 1);
+
+        // One point, reached from either side — nothing left to bridge.
+        expect(first.to[0]).toBeCloseTo(second.from[0], 9);
+        expect(first.to[1]).toBeCloseTo(second.from[1], 9);
+        expect(cornerArcOf(elements, 0)).toBeNull();
+
+        // And the nose sits against both faces at once, which is what a fillet
+        // in the corner means.
+        const centre = noseCentre(first.to);
+        expect(centre[0]).toBeCloseTo(20 + NOSE, 9);     // clear of the shoulder
+        expect(centre[1]).toBeCloseTo(20 + NOSE, 9);     // clear of the shaft
+    });
+
+    test('and it stops short of where each block would have run alone', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = intoTheCorner();
+        const trimmed = referencePointOf(elements, 0);
+
+        const alone = referencePointSegment([40, 20], [20, 20], {
+            compensation: 'G42', nose: {center: [NOSE, NOSE], radius: NOSE},
+        });
+        // Travelling -Z, stopping earlier means stopping at a larger Z.
+        expect(trimmed.to[0]).toBeGreaterThan(alone.to[0] + 1);
+        expect(trimmed.to[1]).toBeCloseTo(alone.to[1], 9);
+    });
+
+    test('running past the crossing is a gouge, and it no longer happens', () => {
+        // Each block carrying on to its own end takes a bite out of the face the
+        // other one is cutting, up to a nose radius deep.
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 26);
+        resetMaterialTrace();
+
+        const st = advanceMaterialTrace(intoTheCorner(), 2);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('a corner the material does not fill is rolled around, not cut across', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = roundTheCorner();
+
+        const first = referencePointOf(elements, 0);
+        const second = referencePointOf(elements, 1);
+        const arc = cornerArcOf(elements, 0);
+
+        // The two offset paths really do part, and the arc closes the gap.
+        expect(Math.hypot(first.to[0] - second.from[0], first.to[1] - second.from[1]))
+            .toBeCloseTo(NOSE * Math.SQRT2, 6);
+        expect(arc.length).toBeGreaterThan(2);
+        expect(arc[0]).toEqual(first.to);
+        expect(arc[arc.length - 1][0]).toBeCloseTo(second.from[0], 9);
+        expect(arc[arc.length - 1][1]).toBeCloseTo(second.from[1], 9);
+    });
+
+    test('the nose keeps its own radius from the corner the whole way round', () => {
+        // The invariant the arc exists for. Cutting across the gap instead would
+        // drive the nose r(1-cos45) = 0.7 mm into the corner of the part.
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const arc = cornerArcOf(roundTheCorner(), 0);
+
+        arc.forEach(p => {
+            const centre = noseCentre(p);
+            const away = Math.hypot(centre[0] - 20, centre[1] - 20);
+            expect(away).toBeLessThanOrEqual(NOSE + 1e-9);
+            expect(away).toBeGreaterThanOrEqual(NOSE - CORNER_TOLERANCE_MM);
+        });
+    });
+
+    test('rolling round the corner takes the stock that would otherwise stand', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = roundTheCorner();
+        const st = advanceMaterialTrace(elements, 1);
+        const afterBlock = st.removed;
+
+        // The arc belongs to the block that arrives at the corner, so it is
+        // already counted here — and it is not nothing.
+        expect(afterBlock).toBeGreaterThan(0);
+        const columns = st.touchedMax - st.touchedMin;
+        expect(columns).toBeGreaterThan(0);
+    });
+
+    test('a corner too slight to matter is left alone', () => {
+        // Every joint of a tessellated arc is a corner of a degree or so, and
+        // the error at one is r(1-cos θ/2) — microns. Paying for them would cost
+        // more than the arcs themselves do.
+        setup({toolGeometry: tool(0.4), blank: bar(0, 60, 30)});
+        const shallow = [g42(40, 20, 30, 20), g42(30, 20, 20, 20.05)];
+        const alone = referencePointSegment([40, 20], [30, 20], {
+            compensation: 'G42', nose: {center: [0.4, 0.4], radius: 0.4},
+        });
+
+        expect(referencePointOf(shallow, 0).to[0]).toBeCloseTo(alone.to[0], 9);
+        expect(referencePointOf(shallow, 0).to[1]).toBeCloseTo(alone.to[1], 9);
+        expect(cornerArcOf(shallow, 0)).toBeNull();
+    });
+
+    test('blocks that do not meet are not a corner', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const apart = [g42(40, 20, 30, 20), g42(28, 20, 28, 26)];
+        const alone = referencePointSegment([40, 20], [30, 20], {
+            compensation: 'G42', nose: {center: [NOSE, NOSE], radius: NOSE},
+        });
+
+        expect(referencePointOf(apart, 0).to[0]).toBeCloseTo(alone.to[0], 9);
+        expect(referencePointOf(apart, 0).to[1]).toBeCloseTo(alone.to[1], 9);
+        expect(cornerArcOf(apart, 0)).toBeNull();
+    });
+
+    test('an approach needs no corner treatment — it already lands on the contour', () => {
+        setup({toolGeometry: tool(), blank: bar(0, 60, 30)});
+        const elements = [
+            {...g1(55, 20, 40, 20), toolRadiusCompensation: 'Approach'},
+            g42(40, 20, 40, 26),
+        ];
+        const approach = referencePointOf(elements, 0);
+        const contour = referencePointOf(elements, 1);
+
+        expect(approach.to[0]).toBeCloseTo(contour.from[0], 9);
+        expect(approach.to[1]).toBeCloseTo(contour.from[1], 9);
+        expect(cornerArcOf(elements, 0)).toBeNull();
     });
 });
 
