@@ -25,6 +25,7 @@ const {
     noseOf,
     materialTraceGougeRects,
     worstGouge,
+    worstRapid,
     worstOffContour,
     materialTraceOwed,
     materialTraceCollisionRects,
@@ -1562,6 +1563,109 @@ describe('a holder that collides everywhere', () => {
         // with no flag to remember to reset.
         advanceMaterialTrace(elements, 5);
         expect(collisionCheckStopped()).toBe(false);
+    });
+});
+
+describe('a rapid that cuts', () => {
+    // G0 is a positioning move: the control drives it at full traverse and the
+    // edge is not meant to meet anything. The geometry of the cut is the same as
+    // any other, so only the report differs.
+    const g0 = (zs, xs, z, x) => ({...g1(zs, xs, z, x), type: 'G0'});
+
+    beforeEach(() => setup());
+
+    test('a rapid through stock is reported, and still painted', () => {
+        const elements = [g1(18, 12, 18, 12), g0(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 2);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.rapids.length).toBe(1);
+        expect(st.rapids[0].at).toBe(1);
+        expect(worstRapid().depth).toBeGreaterThan(0);
+        // Painted like any other cut — the metal really is gone.
+        expect(materialTraceRects().length).toBeGreaterThan(0);
+    });
+
+    test('a rapid in free air is not', () => {
+        const elements = [g1(18, 12, 18, 12), g0(18, 15, 2, 15)];
+        const st = advanceMaterialTrace(elements, 2);
+        expect(st.rapids).toEqual([]);
+        expect(worstRapid()).toBeNull();
+    });
+
+    test('a cutting move through the same stock is not a rapid', () => {
+        const elements = [g1(18, 12, 18, 12), g1(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 2);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.rapids).toEqual([]);
+    });
+
+    test('the first block of the program is exempt', () => {
+        // Its start point is wherever the parser's axes happened to stand, not a
+        // position the machine was ever at. A program that declares its tool
+        // before its first rapid would otherwise plough out of the blank from
+        // the spindle centre every time.
+        const st = advanceMaterialTrace([g0(0, 0, 2, 8)], 1);
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.rapids).toEqual([]);
+    });
+
+    test('it says where, and how deep', () => {
+        const elements = [g1(18, 12, 18, 12), {...g0(18, 8, 2, 8), row: 11}];
+        advanceMaterialTrace(elements, 2);
+
+        const lines = describeMaterialTrace();
+        const line = lines.find(l => l.startsWith('RAPID THROUGH STOCK'));
+        expect(line).toMatch(/in 1 block\(s\)/);
+        expect(line).toMatch(/row 12/);
+        expect(line).toMatch(/mm radial/);
+    });
+
+    test('it is reported above a gouge and below a holder strike', () => {
+        // Both a rapid and a strike break the machine; a gouge spoils the part.
+        setup();
+        View.sinumerikView.parseData.contour = bar(0, 20, 6);
+        resetMaterialTrace();
+
+        const elements = [g1(18, 12, 18, 12), {...g0(18, 4, 2, 4), row: 11}];
+        advanceMaterialTrace(elements, 2);
+
+        const lines = describeMaterialTrace();
+        const rapid = lines.findIndex(l => l.startsWith('RAPID THROUGH STOCK'));
+        const gouge = lines.findIndex(l => l.startsWith('CUT INTO THE PART'));
+        expect(rapid).toBeGreaterThanOrEqual(0);
+        expect(gouge).toBeGreaterThan(rapid);
+    });
+
+    test('stepping back takes it off the list', () => {
+        const elements = [g1(18, 12, 18, 12), g0(18, 8, 2, 8)];
+        const st = advanceMaterialTrace(elements, 2);
+        expect(st.rapids.length).toBe(1);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().rapids).toEqual([]);
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().rapids.length).toBe(1);
+    });
+
+    test('a keyframe carries them, so a scrub does not lose them', () => {
+        const elements = [];
+        for (let p = 0; p < 40; p++) {
+            const r = 9.5 - p * 0.1;
+            elements.push(g1(18, r, 2, r));
+        }
+        elements.push({...g0(18, 2, 2, 2), row: 50});
+        elements.push(g1(18, 1.5, 2, 1.5));
+
+        const st = advanceMaterialTrace(elements, elements.length);
+        expect(st.rapids.length).toBe(1);
+
+        // Back to the start and forward again, through whatever keyframes exist.
+        advanceMaterialTrace(elements, 0);
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().rapids.length).toBe(1);
+        expect(materialTraceState().rapids[0].row).toBe(50);
     });
 });
 
