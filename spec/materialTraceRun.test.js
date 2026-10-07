@@ -1197,6 +1197,47 @@ describe('gouges into the finished part', () => {
         resetMaterialTrace();
     };
 
+    test('an overrun into a face is measured along the axis, not across it', () => {
+        // The user's case in miniature: the part ends at Z 10, and a facing cut
+        // runs a fraction of a millimetre past it. Measured radially — which is
+        // all a column can measure on its own — that reads as the whole height
+        // of the face, which is absurd on a cut 0.3 mm long.
+        setupWithPart({blank: bar(0, 20, 10), contour: bar(0, 10, 10)});
+
+        // Straight down the face at Z 10, taking a sliver off its end.
+        const st = advanceMaterialTrace([g1(9.7, 18, 9.7, 0)], 1);
+
+        expect(st.gouges).toHaveLength(1);
+        const worst = worstGouge();
+        expect(worst.axis).toBe('axial');
+        expect(worst.depth).toBeLessThan(1);
+
+        // Exactly the axial extent of the gouged region — the rectangles the
+        // renderer gets are built from the same columns, so they pin the count
+        // without the test having to guess where the grid starts.
+        const rects = materialTraceGougeRects();
+        const lo = Math.min(...rects.map(r => r.a0lo));
+        const hi = Math.max(...rects.map(r => r.a0hi));
+        expect(worst.depth).toBeCloseTo(hi - lo, 9);
+        expect(worst.depth).toBeGreaterThanOrEqual(st.grid.pitch - 1e-9);
+    });
+
+    test('a cut under the diameter is still measured across it', () => {
+        setupWithPart();
+        const st = advanceMaterialTrace(cutTo(3), 1);
+
+        expect(st.gouges[0].axis).toBe('radial');
+        expect(st.gouges[0].depth).toBeCloseTo(2, 1);
+    });
+
+    test('the report says which way it went in', () => {
+        setupWithPart({blank: bar(0, 20, 10), contour: bar(0, 10, 10)});
+        advanceMaterialTrace([{...g1(9.7, 18, 9.7, 0), row: 7}], 1);
+
+        const line = describeMaterialTrace().find(l => l.startsWith('CUT INTO THE PART'));
+        expect(line).toMatch(/mm axial/);
+    });
+
     test('a cut that stops above the part is not a gouge', () => {
         setupWithPart();
         // The tool square is 2 tall sitting at radius 6, so it reaches down to 6.
