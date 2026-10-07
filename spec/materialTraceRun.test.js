@@ -34,6 +34,8 @@ const {
     UNDO_BUDGET_ENTRIES,
     COLLISION_GIVEUP,
     collisionCheckStopped,
+    thinKeyframes,
+    KEYFRAME_WORK_SHARE,
     materialTraceReport,
     describeMaterialTrace,
 } = require('../lib/materialTraceRun');
@@ -417,12 +419,18 @@ describe('scrubbing the progress bar', () => {
     // restoring an earlier state. Keyframes are what keep that from replaying
     // the whole program on every keypress — measured at 15 s before they
     // existed, against single-digit milliseconds with them.
+    // One full-length pass per element, each a little deeper than the last.
+    //
+    // Keyframes are only laid down while they cost a bounded share of the
+    // sweeping they shorten (KEYFRAME_WORK_SHARE), and the sweeping that counts
+    // is columns that still hold material: a pass is charged for the leading
+    // edge that meets stock, not for the length it trails over ground it has
+    // already cut. So a program made of many short collinear moves sweeps almost
+    // nothing — a tenth of a column per move — and correctly gets no keyframes,
+    // which is its own test below. Descending passes do real work and get them.
     const manyPasses = () => {
         const els = [];
-        for (let p = 0; p < 8; p++) {
-            const r = 9 - p;
-            for (let k = 0; k < 10; k++) els.push(g1(18 - (k * 16) / 10, r, 18 - ((k + 1) * 16) / 10, r));
-        }
+        for (let p = 0; p < 80; p++) els.push(g1(18, 9.5 - p * 0.1, 2, 9.5 - p * 0.1));
         return els;
     };
 
@@ -434,6 +442,27 @@ describe('scrubbing the progress bar', () => {
         // One at the blank itself, so any rewind has a floor to land on.
         expect(st.snapshots[0].at).toBe(0);
         expect(st.snapshotEvery).toBeGreaterThanOrEqual(1);
+    });
+
+    test('a program too cheap to be worth keyframing gets none, and still scrubs', () => {
+        // A keyframe costs a pass over every column of the grid. On a program
+        // whose whole sweep is smaller than that, keyframes would cost more than
+        // the replay they save, and the right number of them is none — which has
+        // to leave the result identical, only slower to reach.
+        const els = [];
+        for (let k = 0; k < 10; k++) els.push(g1(18 - (k * 16) / 10, 9, 18 - ((k + 1) * 16) / 10, 9));
+
+        advanceMaterialTrace(els, els.length);
+        // eslint-disable-next-line no-unused-vars
+        const st = materialTraceState();
+        expect(st.snapshots.length).toBe(1);
+        expect(st.snapshots[0].at).toBe(0);
+        expect(st.keyframeColumns).toBeLessThanOrEqual(0.25 * st.sweptColumns + st.grid.columns);
+
+        const atEnd = totalArea(st.grid);
+        advanceMaterialTrace(els, 0);
+        advanceMaterialTrace(els, els.length);
+        expect(totalArea(materialTraceState().grid)).toBeCloseTo(atEnd, 9);
     });
 
     test('going back lands on a keyframe instead of rebuilding from the blank', () => {
@@ -512,20 +541,71 @@ describe('keyframes earn their keep', () => {
         return els;
     };
 
+    // `passes` cycles back over radii it has already cut, so after the first
+    // eight it removes nothing and sweeps nothing — which is right, and which
+    // means it never accumulates the work a keyframe has to be worth. These
+    // deepen monotonically, so every pass meets stock and is charged for it.
+    const deepening = n => {
+        const els = [];
+        for (let p = 0; p < n; p++) {
+            const r = 9.5 - (p * 9) / n;
+            els.push(g1(18, r, 2, r));
+        }
+        return els;
+    };
+
     test('a jump forward sweeps a fraction of the program, not all of it again', () => {
         // Without the forward shortcut the result would be identical and only
         // the cost would differ — which is why this counts work instead of
         // comparing material.
-        const els = passes(8);
+        //
+        // The bound is the distance back to the nearest keyframe, read from the
+        // keyframe list rather than assumed to be the spacing: keyframes are laid
+        // down in proportion to the work they save, so they are dense where the
+        // cutting is heavy and sparse where it is cheap, not evenly spaced.
+        const els = deepening(80);
         advanceMaterialTrace(els, els.length);
-        advanceMaterialTrace(els, 0);
+        const at = materialTraceState().snapshots.map(snap => snap.at);
+        expect(at.length).toBeGreaterThan(1);
 
+        advanceMaterialTrace(els, 0);
         const before = materialTraceState().swept;
         advanceMaterialTrace(els, els.length);
         const done = materialTraceState().swept - before;
 
-        expect(done).toBeLessThanOrEqual(materialTraceState().snapshotEvery);
+        expect(done).toBe(els.length - Math.max(...at.filter(a => a <= els.length)));
         expect(done).toBeLessThan(els.length);
+    });
+
+    test('keyframes cost a bounded share of the sweeping, not a share each', () => {
+        // The gate is cumulative: what has already been spent on keyframes is
+        // counted against the work, so the share bounds the whole set and not
+        // each keyframe on its own. Judged against the share rather than a
+        // keyframe count, which is what the share is for.
+        const els = deepening(80);
+        const st = advanceMaterialTrace(els, els.length);
+
+        expect(st.snapshots.length).toBeGreaterThan(1);
+        // Counted from the keyframes themselves — one costs a pass over every
+        // column — rather than read back off the counter that decides it, which
+        // would hold however wrongly that counter was kept. The keyframe at zero
+        // is taken before anything has been swept, so it is the one the share
+        // cannot pay for.
+        expect(st.snapshots.length * st.grid.columns)
+            .toBeLessThanOrEqual(KEYFRAME_WORK_SHARE * st.sweptColumns + st.grid.columns);
+    });
+
+    test('the carried byte total is the real one', () => {
+        // Summed afresh over every keyframe on every keyframe, this was 77% of
+        // the whole trace's running time, so it is carried instead — and a
+        // carried total that drifts would silently stop the memory budget from
+        // ever binding.
+        const els = deepening(80);
+        const st = advanceMaterialTrace(els, els.length);
+
+        const actual = st.snapshots.reduce(
+            (n, snap) => n + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0), 0);
+        expect(st.bytes).toBe(actual);
     });
 
     test('a step back sweeps almost nothing', () => {
@@ -543,22 +623,48 @@ describe('keyframes earn their keep', () => {
         expect(done).toBeLessThanOrEqual(materialTraceState().snapshotEvery);
     });
 
+    // A keyframe of a given weight, for the thinning tests. Only `runs` is read.
+    const keyframe = (at, boundsPerRun = 1, runs = 1) => ({
+        at,
+        runs: Array.from({length: runs}, () => ({bounds: new Float64Array(boundsPerRun)})),
+    });
+
     test('past the cap the spacing doubles instead of the memory growing', () => {
-        // Exactly as many elements as the cap allows keyframes: the interval
-        // starts at one per element, which overruns the cap by the keyframe at
-        // zero and must thin rather than keep allocating. A longer program
-        // would not test this — the interval would already be 2 and the count
-        // would come in under the cap on its own.
-        const els = passes(Math.ceil(MAX_SNAPSHOTS / 8));
-        expect(els.length).toBe(MAX_SNAPSHOTS);
+        const snapshots = Array.from({length: MAX_SNAPSHOTS + 1}, (_, i) => keyframe(i));
+        const thinned = thinKeyframes(snapshots, 1, 0);
 
-        const st = advanceMaterialTrace(els, els.length);
-        expect(st.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
-        expect(st.snapshotEvery).toBeGreaterThan(1);
+        expect(thinned.snapshots.length).toBeLessThanOrEqual(MAX_SNAPSHOTS);
+        expect(thinned.every).toBe(2);
+        // Every other one, so the spread stays even and the first is kept: it is
+        // the blank, and a rewind has nothing else to land on.
+        expect(thinned.snapshots[0].at).toBe(0);
+        expect(thinned.snapshots[1].at).toBe(2);
+    });
 
-        const bytes = st.snapshots.reduce(
+    test('past the memory budget it thins as well, however few keyframes there are', () => {
+        // The cap is a count and the budget is bytes, and on a long part it is
+        // the bytes that bind first: a grid of thousands of columns makes
+        // keyframes that are individually large. Without this the trace would
+        // hold the whole program in memory one keyframe at a time.
+        const heavy = Math.ceil(SNAPSHOT_BUDGET_BYTES / 8 / 8);
+        const snapshots = Array.from({length: 8}, (_, i) => keyframe(i, heavy));
+        const bytes = snapshots.reduce(
             (n, snap) => n + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0), 0);
-        expect(bytes).toBeLessThanOrEqual(SNAPSHOT_BUDGET_BYTES);
+        expect(bytes).toBeGreaterThan(SNAPSHOT_BUDGET_BYTES);
+
+        const thinned = thinKeyframes(snapshots, 4, bytes);
+        expect(thinned.bytes).toBeLessThanOrEqual(SNAPSHOT_BUDGET_BYTES);
+        expect(thinned.snapshots.length).toBeLessThan(8);
+        expect(thinned.every).toBeGreaterThan(4);
+    });
+
+    test('thinning stops rather than throwing the last keyframes away', () => {
+        // Three cannot be halved to anything useful, so an unmeetable budget
+        // leaves them: losing the floor would mean rebuilding from the blank.
+        const snapshots = [keyframe(0), keyframe(4), keyframe(8)];
+        const thinned = thinKeyframes(snapshots, 4, SNAPSHOT_BUDGET_BYTES * 2);
+        expect(thinned.snapshots).toHaveLength(3);
+        expect(thinned.every).toBe(4);
     });
 
     test('a keyframe restores the material exactly', () => {
