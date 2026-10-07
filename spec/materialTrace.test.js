@@ -516,6 +516,21 @@ describe('sweeping an outline', () => {
         expect(before - totalArea(grid)).toBeCloseTo(2 * 2, 1);
     });
 
+    test('an edge lying along the scan line is skipped, not divided by zero', () => {
+        // The merged scan keeps the half-open rule for the same reason the
+        // single-polygon one does. Vertices look after themselves under the
+        // winding rule — the two edges meeting there cancel or coincide — but an
+        // edge with no extent along the scan direction would interpolate 0/0 and
+        // put a NaN among the crossings, where it sorts unpredictably and can
+        // swallow a span.
+        const square = rect(0, 2, 1, 3);           // edges at a0 = 0 and a0 = 2
+        const comps = sweptComponents(square, [0, 0], [0, 0]);
+
+        expect(componentsSpansAt(comps, 0)).toEqual([[1, 3]]);
+        expect(componentsSpansAt(comps, 1)).toEqual([[1, 3]]);
+        expect(componentsSpansAt(comps, 2)).toEqual([]);   // past the far edge
+    });
+
     test('a concave outline removes two spans in the column it straddles', () => {
         const c = [
             [0, 0], [10, 0], [10, 2], [2, 2], [2, 8], [10, 8], [10, 10], [0, 10],
