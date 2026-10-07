@@ -429,7 +429,7 @@ describe('columns settled without reading them out', () => {
         expect(record.at).toBe(1);
 
         const centre = (column) => st.grid.min + (column + 0.5) * st.grid.pitch;
-        const reached = Math.max(...record.columns.map(([column]) => centre(column)));
+        const reached = Math.max(...record.columns.map(centre));
 
         // The step is at Z 10, and the outline covers up to Z 20 on this pass.
         // Nothing beyond the step is written down, because there is nothing there
