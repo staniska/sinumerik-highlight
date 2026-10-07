@@ -19,6 +19,7 @@ const {
     materialTraceRects,
     materialTraceGougeRects,
     worstGouge,
+    worstOffContour,
     materialTraceCollisionRects,
     worstCollision,
     elementsToPolygon,
@@ -1190,5 +1191,176 @@ describe('reporting damage', () => {
 
         advanceMaterialTrace(elements, 1);
         expect(describeMaterialTrace()).toEqual([]);
+    });
+});
+
+describe('checking the painted boundary against the programmed path', () => {
+    // The one failure that gives nothing else away. Under G41/G42 the control
+    // keeps the nose tangent to the programmed path, so the surface a block
+    // leaves IS that path. The outline is placed at the reference point and the
+    // offset to the nose comes from the file's geometry — so a file drawn about
+    // the wrong point puts every boundary a constant distance off, with no
+    // crash and no warning, and every gouge depth read off it is wrong too.
+
+    // An outline with a real rounded nose, as a tool file has: the arc is
+    // centred at (r, r) from the reference point and tangent to both flanks, so
+    // the lowest point of the tool in any direction is the point where that arc
+    // touches. A square corner standing in for a nose is not good enough here —
+    // its lowest point is the reference point itself, which sits on the path
+    // only when the path runs along an axis, and drifts with the slope on a
+    // taper.
+    const nosedOutline = (r, segments = 24) => {
+        const points = [[r, 0]];
+        for (let k = 1; k <= segments; k++) {
+            const a = (Math.PI / 2) * (k / segments);
+            points.push([r - r * Math.sin(a), r - r * Math.cos(a)]);
+        }
+        points.push([0, 4], [4, 4], [4, 0]);
+
+        const shapes = [];
+        points.forEach((p, i) => {
+            const q = points[(i + 1) % points.length];
+            shapes.push(g1(p[0], p[1], q[0], q[1]));
+        });
+        return shapes;
+    };
+
+    const soundTool = (r = 0.4) => ({
+        sections: [{role: 'cut', shapes: nosedOutline(r), elements: [{type: 'arc', radius: r, center: [r, 0, r]}]}],
+    });
+
+    // The same outline with its nose DECLARED somewhere else — the file drawn
+    // about a point that is not the one the control compensates about.
+    const misdrawnTool = (r = 0.4, slip = 0.6) => ({
+        sections: [{role: 'cut', shapes: nosedOutline(r), elements: [{type: 'arc', radius: r, center: [r + slip, 0, r + slip]}]}],
+    });
+
+    // Travelling towards -a0 with the tool outside the work, the side that puts
+    // it there under the convention this package already ships (offn.js:44,
+    // where G41 is +90° from the direction of travel) is G42.
+    const compensated = (zs, xs, z, x) => ({...g1(zs, xs, z, x), toolRadiusCompensation: 'G42'});
+
+    const run = (tool, element) => {
+        setup({toolGeometry: tool, blank: bar(0, 60, 20)});
+        return advanceMaterialTrace([element], 1);
+    };
+
+    test('a sound tool leaves its boundary on the programmed line', () => {
+        const st = run(soundTool(), compensated(50, 10, 10, 10));
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.offContour).toEqual([]);
+        expect(worstOffContour()).toBeNull();
+    });
+
+    test('a nose declared off its true place is caught, with the distance', () => {
+        const st = run(misdrawnTool(0.4, 0.6), compensated(50, 10, 10, 10));
+
+        expect(st.offContour.length).toBe(1);
+        expect(worstOffContour().deviation).toBeCloseTo(0.6, 2);
+    });
+
+    test('the report says it first, because it invalidates the rest', () => {
+        setup({toolGeometry: misdrawnTool(0.4, 0.6), blank: bar(0, 60, 20)});
+        View.sinumerikView.parseData.contour = bar(0, 60, 5);
+        resetMaterialTrace();
+        advanceMaterialTrace([{...compensated(50, 10, 10, 10), row: 20}], 1);
+
+        const lines = describeMaterialTrace();
+        expect(lines[0]).toMatch(/TRACE IS OFF by 0\.\d+ mm/);
+        expect(lines[0]).toMatch(/row 21/);
+        expect(lines[0]).toMatch(/depths below are wrong/);
+    });
+
+    test('an uncompensated block is not checked — its line is the tool centre', () => {
+        // Under G40 the programmed path is the reference point itself, and the
+        // boundary is a tool radius away from it by design.
+        const st = run(soundTool(), g1(50, 10, 10, 10));
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('an approach is not checked — the correction is only part applied', () => {
+        setup({toolGeometry: misdrawnTool(), blank: bar(0, 60, 20)});
+        const elements = [
+            {...g1(50, 10, 30, 10), toolRadiusCompensation: 'Approach'},
+            {...g1(30, 10, 10, 10), toolRadiusCompensation: 'G42'},
+        ];
+        const st = advanceMaterialTrace(elements, 1);
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('a facing cut is not judged — it lives inside one column', () => {
+        // The boundary of a block that barely spans a column varies across the
+        // whole of it, so columns cannot say where it lies.
+        const st = run(misdrawnTool(), compensated(30, 18, 30, 4));
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('a taper is judged on its own line, not on a level one', () => {
+        const sound = run(soundTool(), compensated(50, 6, 10, 14));
+        expect(sound.offContour).toEqual([]);
+
+        const bent = run(misdrawnTool(0.4, 0.8), compensated(50, 6, 10, 14));
+        expect(bent.offContour.length).toBe(1);
+    });
+
+    test('a steep taper is still judged, and still passes', () => {
+        // The tolerance needs no allowance for slope. Columns are scanned along
+        // their centre line rather than averaged across their width, so the
+        // axial pitch never enters the comparison: measured residual here, on a
+        // 4:1 taper, is 0.0002 mm against a tolerance of 0.02. What the slope
+        // does punish is comparing against the block's END value instead of the
+        // line the column is actually scanned on — that is out by the slope
+        // times half the block, and this is the test that says so.
+        setup({toolGeometry: soundTool(), blank: bar(0, 80, 60)});
+        const st = advanceMaterialTrace([compensated(60, 6, 50, 46)], 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('a block that cut nothing has no boundary to judge', () => {
+        // Travelling through air leaves no surface behind.
+        const st = run(misdrawnTool(), compensated(50, 40, 10, 40));
+        expect(st.removed).toBe(0);
+        expect(st.offContour).toEqual([]);
+    });
+
+    test('the wrong side is caught too, and that is the point', () => {
+        // G41 here puts the tool on the far side of the path, so the boundary
+        // lands a full tool offset away. If this fired on every compensated
+        // block of a real program it would mean the G41/G42 handedness taken
+        // from offn.js does not match the machine — which is exactly the kind of
+        // silent mismatch this check exists to surface.
+        const st = run(soundTool(), {...g1(50, 10, 10, 10), toolRadiusCompensation: 'G41'});
+
+        expect(st.offContour.length).toBe(1);
+        expect(worstOffContour().deviation).toBeGreaterThan(0.5);
+    });
+
+    test('rewinding unwinds it with the material', () => {
+        setup({toolGeometry: misdrawnTool(), blank: bar(0, 60, 20)});
+        const elements = [g1(55, 19, 52, 19), compensated(50, 10, 10, 10)];
+
+        advanceMaterialTrace(elements, 2);
+        expect(materialTraceState().offContour.length).toBe(1);
+
+        advanceMaterialTrace(elements, 1);
+        expect(materialTraceState().offContour).toEqual([]);
+    });
+
+    test('a keyframe carries it', () => {
+        setup({toolGeometry: misdrawnTool(), blank: bar(0, 600, 20)});
+        const elements = [];
+        for (let k = 0; k < 40; k++) elements.push(g1(590 - k, 25, 589 - k, 25));
+        elements.push(compensated(500, 10, 100, 10));
+
+        advanceMaterialTrace(elements, elements.length);
+        expect(materialTraceState().offContour.length).toBe(1);
+
+        materialTraceState().undo = [];
+        materialTraceState().undoEntries = 0;
+        advanceMaterialTrace(elements, 10);
+        expect(materialTraceState().offContour).toEqual([]);
     });
 });

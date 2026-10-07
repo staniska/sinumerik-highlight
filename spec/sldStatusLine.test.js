@@ -34,16 +34,24 @@ const setup = (errors = []) => {
     };
 };
 
-const clean = () => ({status: 'ok', gouges: {count: 0}, collisions: {count: 0}});
+const clean = () => ({status: 'ok', gouges: {count: 0}, collisions: {count: 0}, offContour: {count: 0}});
 const gouged = (count, depth, row) => ({
     status: 'ok',
     gouges: {count, worst: {depth, row}},
     collisions: {count: 0},
+    offContour: {count: 0},
 });
 const struck = (count, depth, row) => ({
     status: 'ok',
     gouges: {count: 1, worst: {depth: 0.1, row: 1}},
     collisions: {count, worst: {depth, row}},
+    offContour: {count: 0},
+});
+const offCourse = (count, deviation, row) => ({
+    status: 'ok',
+    gouges: {count: 1, worst: {depth: 0.9, row: 2}},
+    collisions: {count: 1, worst: {depth: 0.9, row: 3}},
+    offContour: {count, worst: {deviation, row}},
 });
 
 beforeEach(() => {
@@ -113,9 +121,32 @@ describe('damage', () => {
     test('a block with no row still reports its depth', () => {
         materialTraceReport.mockReturnValue({
             status: 'ok', gouges: {count: 1, worst: {depth: 0.3}}, collisions: {count: 0},
+            offContour: {count: 0},
         });
         updateSldStatusLine();
         expect(stringDiv.innerText).toBe('CUT INTO THE PART 0.300 mm');
+    });
+});
+
+describe('a miscalibrated trace', () => {
+    test('outranks both, because it makes their numbers wrong', () => {
+        // A boundary in the wrong place means every depth measured from it is
+        // out by the same amount — so reporting a gouge first would be quoting
+        // a number this very line says cannot be trusted.
+        materialTraceReport.mockReturnValue(offCourse(7, 0.566, 40));
+        updateSldStatusLine();
+
+        expect(stringDiv.innerText).toBe("TRACE IS OFF 0.566 mm at row 41 — check the tool file's zero");
+        expect(stringDiv.innerText).not.toMatch(/CUT INTO THE PART|HOLDER HIT/);
+        expect(stringDiv.classList.has('sinumerikSLDStringDiv--error')).toBe(true);
+    });
+
+    test('a report without the field is survivable', () => {
+        // The report shape is a contract between modules; a stale shape should
+        // degrade, not throw.
+        materialTraceReport.mockReturnValue({status: 'ok', gouges: {count: 0}, collisions: {count: 0}});
+        expect(() => updateSldStatusLine()).not.toThrow();
+        expect(stringDiv.innerText).toBe('PARSE OK');
     });
 });
 
