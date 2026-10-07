@@ -1067,9 +1067,10 @@ describe('a holder that collides everywhere', () => {
     });
 });
 
-describe('saying what was and was not checked', () => {
-    // The point of the whole report: a feature whose job is catching crashes must
-    // never let "nothing was hit" and "could not be checked" look the same.
+describe('reporting damage', () => {
+    // Only two things are written out: a gouge and a holder strike. The coverage
+    // counters are still kept in the state — the detection depends on them — but
+    // by the user's decision they are not shown.
     const part = () => bar(0, 20, 5);
 
     const withPart = (options = {}) => {
@@ -1080,54 +1081,44 @@ describe('saying what was and was not checked', () => {
 
     const text = () => describeMaterialTrace().join(' | ');
 
-    test('a sound run says so, with a count', () => {
+    test('a sound run says nothing at all', () => {
         withPart();
         advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
 
-        const r = materialTraceReport();
-        expect(r.verdict).toBe('clean');
-        expect(r.checked).toBe(1);
-        expect(text()).toMatch(/1 block\(s\) checked: nothing cut into the part, nothing hit the holder/);
+        expect(describeMaterialTrace()).toEqual([]);
+        expect(materialTraceReport().checked).toBe(1);
     });
 
-    test('a block with no tool outline is never counted as clean', () => {
-        // The failure this exists to prevent: no geometry means no checks, which
-        // would otherwise read as "nothing happened".
+    test('blocks that could not be checked are counted but not announced', () => {
         withPart({toolGeometry: null});
         advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
 
-        const r = materialTraceReport();
-        expect(r.verdict).toBe('partial');
-        expect(r.skippedTool).toBe(1);
-        expect(text()).toMatch(/NOT checked/);
-        expect(text()).not.toMatch(/nothing cut into the part/);
+        expect(materialTraceReport().skippedTool).toBe(1);
+        expect(describeMaterialTrace()).toEqual([]);
     });
 
-    test('a block in another plane is also a gap, not a pass', () => {
+    test('a block in another plane is likewise counted, not announced', () => {
         withPart();
         advanceMaterialTrace([g1(18, 8, 2, 8, {workPlane: 'G17'})], 1);
 
-        expect(materialTraceReport().verdict).toBe('partial');
-        expect(text()).toMatch(/another plane .* NOT checked/);
+        expect(materialTraceReport().skippedPlane).toBe(1);
+        expect(describeMaterialTrace()).toEqual([]);
     });
 
-    test('without a contour it says gouges cannot be detected', () => {
+    test('a missing contour is recorded, and simply yields no gouges', () => {
         withPart({contour: null});
-        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
+        advanceMaterialTrace([g1(18, 3, 2, 3)], 1);
 
-        const r = materialTraceReport();
-        expect(r.partKnown).toBe(false);
-        expect(r.verdict).toBe('partial');
-        expect(text()).toMatch(/No CONTOUR/);
+        expect(materialTraceReport().partKnown).toBe(false);
+        expect(materialTraceReport().gouges.count).toBe(0);
+        expect(describeMaterialTrace()).toEqual([]);
     });
 
     test('a gouge is reported with its depth, place and line', () => {
         withPart();
         advanceMaterialTrace([{...g1(18, 3, 2, 3), row: 11, sourceFile: 'MAIN_MPF'}], 1);
 
-        const r = materialTraceReport();
-        expect(r.verdict).toBe('damage');
-        expect(r.gouges.count).toBe(1);
+        expect(materialTraceReport().gouges.count).toBe(1);
         expect(text()).toMatch(/CUT INTO THE PART in 1 block\(s\)/);
         expect(text()).toMatch(/mm radial/);
         expect(text()).toMatch(/row 12/);            // rows are shown 1-based
@@ -1153,7 +1144,7 @@ describe('saying what was and was not checked', () => {
         expect(text()).toMatch(/X3\.000/);
     });
 
-    test('a holder strike outranks a gouge in the report', () => {
+    test('a holder strike is listed before a gouge', () => {
         // A gouge spoils the part; a holder strike breaks the machine.
         withPart({toolGeometry: {sections: [
             {role: 'cut', shapes: [g1(0, 0, 2, 0), g1(2, 0, 2, 2), g1(2, 2, 0, 2), g1(0, 2, 0, 0)], elements: []},
@@ -1178,33 +1169,26 @@ describe('saying what was and was not checked', () => {
 
         expect(materialTraceReport().collisions.stopped).toBe(true);
         expect(text()).toMatch(/Holder checking stopped/);
-        expect(text()).toMatch(/NOT checked/);
     });
 
-    test('nothing to say when there is no trace', () => {
+    test('nothing to say when the trace never ran', () => {
         resetMaterialTrace();
-        expect(materialTraceReport().verdict).toBe('off');
+        expect(materialTraceReport().status).toBe('noTrace');
+        expect(describeMaterialTrace()).toEqual([]);
+
+        withPart({machineType: 'Mill'});
+        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
         expect(describeMaterialTrace()).toEqual([]);
     });
 
-    test('a mill and a missing blank each explain themselves', () => {
-        withPart({machineType: 'Mill'});
-        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
-        expect(text()).toMatch(/lathe programs only/);
-
-        withPart({blank: []});
-        advanceMaterialTrace([g1(18, 8, 2, 8)], 1);
-        expect(text()).toMatch(/no BLANK/);
-    });
-
-    test('the verdict follows a rewind', () => {
+    test('the report follows a rewind', () => {
         withPart();
         const elements = [g1(18, 8, 10, 8), g1(10, 3, 2, 3)];
 
         advanceMaterialTrace(elements, 2);
-        expect(materialTraceReport().verdict).toBe('damage');
+        expect(describeMaterialTrace()).toHaveLength(1);
 
         advanceMaterialTrace(elements, 1);
-        expect(materialTraceReport().verdict).toBe('clean');
+        expect(describeMaterialTrace()).toEqual([]);
     });
 });
