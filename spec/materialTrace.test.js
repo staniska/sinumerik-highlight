@@ -734,7 +734,7 @@ describe('skipping columns before converting them', () => {
 });
 
 describe('the convex fast path', () => {
-    const {isConvex, convexHull, convexSpansAt, sweptComponents, componentsSpansAt} =
+    const {isConvex, convexHull, convexSpansAt, convexScanner, sweptComponents, componentsSpansAt} =
         require('../lib/materialTrace');
 
     const sq = (a0lo, a0hi, a1lo, a1hi) => [
@@ -778,6 +778,60 @@ describe('the convex fast path', () => {
         expect(componentsSpansAt(fast, 5)).toEqual([[0, 2]]);
         // The dent is shallow, so away from it the two agree.
         expect(componentsSpansAt(slow, 5)[0][0]).toBeCloseTo(0, 10);
+    });
+
+    test('the two-pointer scan answers exactly as the per-edge test does', () => {
+        // The scan is the per-edge test with the edges found once instead of
+        // every column, so it has to agree with it everywhere, including the
+        // half-open ends — and it is the only check that the two chains were
+        // split off the ring correctly.
+        let seed = 12345;
+        const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+
+        for (let trial = 0; trial < 60; trial++) {
+            const pts = [];
+            for (let i = 0; i < 3 + Math.floor(rnd() * 20); i++) {
+                pts.push([rnd() * 40 - 20, rnd() * 40 - 20]);
+            }
+            const ring = convexHull(pts);
+            if (ring.length < 3 || !isConvex(ring)) continue;
+
+            const scan = convexScanner(ring);
+            const a0 = ring.map(p => p[0]);
+            const lo = Math.min(...a0) - 1;
+            const hi = Math.max(...a0) + 1;
+
+            // Non-decreasing, as `sweepSegment` walks its columns, and dense
+            // enough to land on vertices as well as between them.
+            for (let k = 0; k <= 400; k++) {
+                const at = lo + (hi - lo) * (k / 400);
+                const want = convexSpansAt(ring, at);
+                const got = scan.at(at);
+                expect(got.length).toBe(want.length);
+                if (want.length) {
+                    expect(got[0][0]).toBeCloseTo(want[0][0], 9);
+                    expect(got[0][1]).toBeCloseTo(want[0][1], 9);
+                }
+            }
+
+            // Exactly on a vertex, where the half-open rule decides.
+            ring.forEach(v => {
+                const want = convexSpansAt(ring, v[0]);
+                const got = convexScanner(ring).at(v[0]);
+                expect(got.length).toBe(want.length);
+                if (want.length) expect(got[0][0]).toBeCloseTo(want[0][0], 9);
+            });
+        }
+    });
+
+    test('the scan holds up on a ring squared off to the axis', () => {
+        // Vertical edges at both extremes: the chains start and end on a flat
+        // step, which is where an off-by-one in the split would show.
+        const scan = convexScanner(sq(0, 10, 2, 5));
+        expect(scan.at(0)).toEqual([[2, 5]]);
+        expect(scan.at(5)).toEqual([[2, 5]]);
+        expect(scan.at(10)).toEqual([]);
+        expect(convexScanner(sq(0, 10, 2, 5)).at(-1)).toEqual([]);
     });
 
     test('a convex ring is crossed twice, so the span is the outer two', () => {
