@@ -30,6 +30,16 @@ const withState = state => {
     View.sinumerikView = state;
 };
 
+// `atom` is a global inside Pulsar. Tests that care about the active editor set
+// one up; the rest run with none, which is the state jest starts in.
+const withOpenProgram = path => {
+    globalThis.atom = {workspace: {getActiveTextEditor: () => (path ? {getPath: () => path} : null)}};
+};
+
+afterEach(() => {
+    delete globalThis.atom;
+});
+
 describe('reading a machine tool list', () => {
     test('tools of the selected machine', () => {
         withState({
@@ -82,6 +92,56 @@ describe('reading a machine tool list', () => {
 
     test('no machine data at all', () => {
         withState({machineManagerData: {selectedMachine: 'LATHE1'}});
+        expect(machineTools()).toEqual([]);
+    });
+});
+
+describe('whose tools the panel is about', () => {
+    test('with nothing selected, the machine the open program names', () => {
+        // What makes the opener usable from the SLDebug tab: the program in
+        // front of the user already says which machine it runs on.
+        withState({
+            machineManagerData: {},
+            programmData: {'/p/main.mpf': {machine: {machineName: 'LATHE2'}}},
+            machineData: {machines: {LATHE2: {}}, tools: {LATHE2: [{name: 'B'}]}},
+        });
+        withOpenProgram('/p/main.mpf');
+
+        expect(machineTools()).toEqual([{name: 'B'}]);
+    });
+
+    test('a machine picked in machineManager still wins', () => {
+        withState({
+            machineManagerData: {selectedMachine: 'LATHE1'},
+            programmData: {'/p/main.mpf': {machine: {machineName: 'LATHE2'}}},
+            machineData: {machines: {LATHE1: {}, LATHE2: {}}, tools: {LATHE1: [{name: 'A'}], LATHE2: [{name: 'B'}]}},
+        });
+        withOpenProgram('/p/main.mpf');
+
+        expect(machineTools()).toEqual([{name: 'A'}]);
+    });
+
+    test('a machine the program names but the config does not have is refused', () => {
+        // A stale or hand-edited comment must not open a panel offering to add
+        // tools to a machine that does not exist.
+        withState({
+            machineManagerData: {},
+            programmData: {'/p/main.mpf': {machine: {machineName: 'GONE'}}},
+            machineData: {machines: {LATHE1: {}}, tools: {GONE: [{name: 'B'}]}},
+        });
+        withOpenProgram('/p/main.mpf');
+
+        expect(machineTools()).toEqual([]);
+    });
+
+    test('no editor, no program, no machine', () => {
+        withState({
+            machineManagerData: {},
+            programmData: {},
+            machineData: {machines: {LATHE1: {}}, tools: {LATHE1: [{name: 'A'}]}},
+        });
+        withOpenProgram(null);
+
         expect(machineTools()).toEqual([]);
     });
 });
