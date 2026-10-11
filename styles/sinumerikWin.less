@@ -279,6 +279,18 @@
   background-color: @sin-btn-hover;
 }
 
+// single-line-debug.js: the IPS button once the stock has been computed. Tinted
+// rather than filled, so it reads as "ready" against either theme without
+// fighting the panel's own colours.
+.sinumerikButton--ready {
+  background-color: fade(@sin-text-success, 25%);
+  border-color: @sin-text-success;
+}
+
+.sinumerikButton--ready:enabled:hover {
+  background-color: fade(@sin-text-success, 40%);
+}
+
 .sinumerikButton:disabled {
   color: @sin-text-subtle;
 }

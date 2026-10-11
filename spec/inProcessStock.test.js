@@ -205,3 +205,52 @@ describe('when there is no answer to give', () => {
         expect(result.skippedTool).toBe(1);
     });
 });
+
+describe('writing the stock out as a contour', () => {
+    const {stockProgramText} = require('../lib/inProcessStock');
+
+    const piece = (elements) => ({elements});
+    const square = piece([
+        {type: 'line', start: [0, 10], end: [40, 10]},
+        {type: 'line', start: [40, 10], end: [40, 0]},
+        {type: 'line', start: [40, 0], end: [0, 0]},
+        {type: 'line', start: [0, 0], end: [0, 10]},
+    ]);
+
+    beforeEach(() => setup());
+
+    test('a closed path: rapid to the start, feed round, M30', () => {
+        const text = stockProgramText(square);
+
+        expect(text[0]).toMatch(/^;/);
+        expect(text[1]).toBe('G0 Z0 X10');
+        expect(text.slice(2, -1)).toEqual(['G1 Z40 X10', 'G1 Z40 X0', 'G1 Z0 X0', 'G1 Z0 X10']);
+        expect(text.at(-1)).toBe('M30');
+    });
+
+    test('in diameters when the program works in diameters', () => {
+        View.sinumerikView.parseData.diamon = 1;
+        const text = stockProgramText(square);
+
+        // Z is a length and stays; X is a radius and is doubled.
+        expect(text[1]).toBe('G0 Z0 X20');
+        expect(text[2]).toBe('G1 Z40 X20');
+    });
+
+    test('an arc keeps its direction and its radius', () => {
+        const text = stockProgramText(piece([
+            {type: 'arc', start: [0, 0], end: [8, 8], center: [0, 8], radius: 8, ccw: false},
+            {type: 'arc', start: [8, 8], end: [0, 0], center: [0, 8], radius: 8, ccw: true},
+        ]));
+
+        expect(text[2]).toBe('G2 Z8 X8 CR=8');
+        expect(text[3]).toBe('G3 Z0 X0 CR=8');
+    });
+
+    test('coordinates are written to four decimals, not to seventeen', () => {
+        const text = stockProgramText(piece([
+            {type: 'line', start: [0, 0], end: [1 / 3, 2 / 3]},
+        ]));
+        expect(text[2]).toBe('G1 Z0.3333 X0.6667');
+    });
+});
