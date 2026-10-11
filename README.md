@@ -128,8 +128,9 @@ file.
 
 A program names a tool and nothing more. The **insert** arrow on a list row writes `;TOOL:NAME` at
 the cursor, and from that line on the tool is drawn translucently on the trajectory during slow
-debug, in the WebGL and the 3D view. The marker is modal and leaks into subroutines, like the rest
-of the modal state; the last one executed wins.
+debug, in the WebGL and the 3D view. The marker may stand anywhere a comment may, the program's
+header included. It is modal and leaks into subroutines, like the rest of the modal state; the last
+one executed wins.
 
 The nose circle — which is what tool-radius compensation turns about — comes from the file's
 declared `$TC_DP6` (nose radius) and `$TC_DP2` (cutting-edge position), the drawing being used only
@@ -178,9 +179,13 @@ When the stock is ready the button turns green and reads **show IPS** — pressi
 in place of the blank — and then **save IPS**, which writes a shape program into the program's own
 folder. Redraw brings the real blank back.
 
-The contour is lines and arcs within 0.3 mm of the stock the trace holds, so it is a handful of
-elements rather than the 0.2 mm staircase of the grid, and it is written in the units and the
-diameter mode the program runs under. Stock that came apart — parted off, or cut through by a groove
+The contour is lines and arcs within 0.1 mm of the stock, so it is a handful of elements rather than
+a staircase, and it is written in the units and the diameter mode the program runs under. To hold
+that figure the run computes on a finer grid than the slow-debug animation uses — 0.05 mm columns
+against 0.2 mm — which costs it time it has, running once in the background, and buys the accuracy
+the animation cannot afford per frame. On a part too long to hold at that pitch the grid is
+coarsened and the tolerance opens up with it, because a fitter held tighter than the steps it is
+smoothing returns the steps. Stock that came apart — parted off, or cut through by a groove
 — is offered as a row of small drawings to choose from.
 
 A program with no tool outline anywhere is refused rather than answered: an untouched blank would

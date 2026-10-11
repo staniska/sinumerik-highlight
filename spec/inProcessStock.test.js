@@ -18,7 +18,12 @@ const {
     resetMaterialTrace,
     materialTraceState,
 } = require('../lib/materialTraceRun');
-const {buildStockGrid, cancelStockRun, stockRunInFlight} = require('../lib/inProcessStock');
+const {
+    buildStockGrid,
+    cancelStockRun,
+    stockRunInFlight,
+    outlineTolerance,
+} = require('../lib/inProcessStock');
 const {totalArea} = require('../lib/materialTrace');
 
 const TOOL_PATH = '/t/turn35.mpf';
@@ -81,7 +86,10 @@ describe('building the stock a program leaves', () => {
         const area = totalArea(background.grid);
 
         resetMaterialTrace();
-        const direct = advanceMaterialTrace(elements, elements.length);
+        // Same pitch on both sides. `removed` is a sum of radial lengths over
+        // columns, not an area, so it scales with the number of columns and
+        // comparing it across two pitches says nothing.
+        const direct = advanceMaterialTrace(elements, elements.length, {minPitch: 0.05});
 
         expect(area).toBeCloseTo(totalArea(direct.grid), 9);
         expect(background.removed).toBeCloseTo(direct.removed, 9);
@@ -103,15 +111,37 @@ describe('building the stock a program leaves', () => {
         expect(result.removed).toBeGreaterThan(shown.removed);
     });
 
-    test('a finished trace on the screen is used as it stands', async () => {
+    test('a finished trace on the screen is used as it stands — if it is fine enough', async () => {
         const elements = program();
-        const shown = advanceMaterialTrace(elements, elements.length);
+        const shown = advanceMaterialTrace(elements, elements.length, {minPitch: 0.05});
 
         const result = await buildStockGrid(elements);
 
         expect(result.reused).toBe(true);
         expect(result.grid).toBe(shown.grid);
         expect(materialTraceState()).toBe(shown);
+    });
+
+    test('a finished trace at the animation pitch is recomputed, not reused', async () => {
+        // The shortcut is about work already done, not about any grid that
+        // happens to be lying around: the animation's grid is coarser than this
+        // run asks for, and handing it back would answer at the animation's
+        // accuracy without saying so.
+        const elements = program();
+        const shown = advanceMaterialTrace(elements, elements.length);
+
+        const result = await buildStockGrid(elements);
+
+        expect(shown.grid.pitch).toBeGreaterThan(result.grid.pitch);
+        expect(result.reused).toBe(false);
+        expect(result.grid).not.toBe(shown.grid);
+    });
+
+    test('the run asks for a finer grid than the animation uses', async () => {
+        const result = await buildStockGrid(program());
+
+        expect(result.status).toBe('ok');
+        expect(result.grid.pitch).toBeCloseTo(0.05, 9);
     });
 
     test('a trace standing at the end of a DIFFERENT program is not', async () => {
@@ -168,16 +198,28 @@ describe('taken in slices', () => {
 });
 
 describe('when there is no answer to give', () => {
-    test('a program with no tool outline anywhere is refused, not answered', async () => {
+    test('a program with no tool anywhere is refused, not answered', async () => {
         // The grid would come back untouched, which reads as "this program
         // removes nothing" — a different statement from "this program was not
         // understood".
-        setup({toolGeometry: null});
-        const result = await buildStockGrid(program());
+        setup();
+        const result = await buildStockGrid(program().map(el => ({...el, toolDef: null})));
 
         expect(result.status).toBe('noTools');
         expect(result.swept).toBe(0);
         expect(result.skippedTool).toBeGreaterThan(0);
+    });
+
+    test('outlines not read from disk yet is a different refusal from no tool', async () => {
+        // The run cannot tell them apart — both skip every block — but the user
+        // can act on them differently: one is "wait", the other "declare a
+        // tool". Reporting the second for the first is what made the IPS button
+        // claim the program had no tool until slow debug had run once.
+        setup({toolGeometry: null});
+        const result = await buildStockGrid(program());
+
+        expect(result.status).toBe('toolsNotReady');
+        expect(result.swept).toBe(0);
     });
 
     test('a milling machine has no axis for the columns to run along', async () => {
@@ -252,5 +294,21 @@ describe('writing the stock out as a contour', () => {
             {type: 'line', start: [0, 0], end: [1 / 3, 2 / 3]},
         ]));
         expect(text[2]).toBe('G1 Z0.3333 X0.6667');
+    });
+});
+
+describe('the tolerance the contour is fitted to', () => {
+    test('is the asked-for one on a grid that can hold it', () => {
+        expect(outlineTolerance(0.05)).toBeCloseTo(0.1, 9);
+        expect(outlineTolerance(0.02)).toBeCloseTo(0.1, 9);
+    });
+
+    test('and opens up with the staircase when the grid had to be coarsened', () => {
+        // A part too long to hold at the working pitch gets a coarser grid from
+        // `pickPitch`. Holding the fitter to 0.1 mm over a 0.4 mm staircase
+        // cannot be done, and what comes back then is the staircase itself —
+        // thousands of chords instead of the shape.
+        expect(outlineTolerance(0.2)).toBeCloseTo(0.3, 9);
+        expect(outlineTolerance(0.4)).toBeCloseTo(0.6, 9);
     });
 });
