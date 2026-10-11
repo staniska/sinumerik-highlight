@@ -387,3 +387,63 @@ describe('redundant branches', () => {
         expect(cut).toHaveLength(2);
     });
 });
+
+// A flange from the field, machined the other way round: the passes step from
+// Z=-44 up towards 0, so the thresholds read `IF R1<` rather than `IF R1>`. Its
+// profile has a face at Z=-8 where the outer boundary drops 40 mm from the
+// cylinder to the start of an arc — a step parallel to the scan lines, which is
+// what let a phantom crossing in.
+const FLANGE = [
+    {id: 0, type: 'line', start: {Z: -44, X: 295}, end: {Z: -5, X: 295}},
+    {id: 1, type: 'line', start: {Z: -5, X: 295}, end: {Z: 0, X: 301}},
+    {id: 2, type: 'line', start: {Z: 0, X: 301}, end: {Z: 0, X: 374}},
+    {id: 3, type: 'line', start: {Z: 0, X: 374}, end: {Z: -8, X: 374}},
+    {id: 4, type: 'line', start: {Z: -8, X: 374}, end: {Z: -8, X: 334}},
+    {
+        id: 5, type: 'arc',
+        start: {Z: -8, X: 334}, middle: {Z: -21, X: 312}, end: {Z: -44, X: 302},
+        startAng: -0.21719319149902674, endAng: -1.471114780727315,
+        radius: 41.04951830038358, center: {Z: -48.08510638297872, X: 342.84574468085106},
+        ccw: false,
+    },
+    {id: 6, type: 'line', start: {Z: -44, X: 302}, end: {Z: -44, X: 295}},
+];
+
+describe('a step parallel to the scan lines', () => {
+    // The scan pitch over this contour is 0.044, so exactly one line falls in
+    // the 0.01 window past the face at Z=-8 where the allowance used to apply.
+    const PROBE = -8.008;
+
+    const run = () => {
+        const problems = [];
+        const lines = generate(FLANGE, {Z: -58, X: 386}, problems);
+        return {lines, problems};
+    };
+
+    test('the pass next to the face samples the wall it actually cuts', () => {
+        run();
+        const sample = samples('processingEnd').find(s => Math.abs(s.coords.Z - PROBE) < 1e-6);
+
+        expect(sample).toBeDefined();
+        // The cut side here is the bore wall at X=295, not the arc at ~334 that
+        // the pass has to clear on its way in.
+        expect(sample.parentId).toBe(0);
+        expect(sample.coords.X).toBeCloseTo(295, 9);
+    });
+
+    test('the threshold lands on the step, not on the scan line next to it', () => {
+        const {lines} = run();
+        const thresholds = lines
+            .filter(line => line.trim().startsWith('IF R1<'))
+            .map(line => line.trim().replace('IF R1<', ''));
+
+        expect(thresholds).toContain('-8');
+        expect(thresholds).not.toContain('-8.008');
+    });
+
+    test('and the cycle agrees with the profile it was generated from', () => {
+        // The deviation this used to report was 38.964 mm: the distance between
+        // the two walls of the flange at that plane.
+        expect(run().problems).toEqual([]);
+    });
+});

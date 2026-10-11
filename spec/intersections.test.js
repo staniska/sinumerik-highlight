@@ -291,3 +291,68 @@ describe('isNumber (the real canvas.js export)', () => {
         expect(isNumber(1, NaN, 3)).toBe(false)
     })
 })
+
+// --- strictEnds: probe lines are not neighbours of the contour ---
+//
+// The allowances below each of these functions exist to stitch a contour whose
+// elements are drawn to meet: the shared corner is the same point written twice,
+// and a hundredth of a millimetre of drawing slack must not open a gap. A probe
+// line fired across the contour to sample it has no such relationship — its ends
+// are corners of a bounding box — and taking the allowance there invents a
+// crossing with an element that stopped short of the probe.
+
+describe('strictEnds', () => {
+    // The geometry that produced it in the field: a cylinder ending at X=-8 and
+    // a probe fired 0.008 past that end, along the line the cylinder sits on. The
+    // probe's own end coincides with the cylinder's Y, so both halves of the
+    // allowance hold and the crossing is reported outside both segments.
+    const cylinder = line(0, 374, -8, 374);
+    const probe = line(-8.008, 295, -8.008, 374);
+
+    test('without it, an element that ends short of the probe still crosses it', () => {
+        const hits = findIntersection(cylinder, probe);
+        expect(hits.length).toBe(1);
+        expect(hits[0].yIntersection).toBeCloseTo(374, 9);
+    });
+
+    test('with it, the probe sees only what it really crosses', () => {
+        expect(findIntersection(cylinder, probe, true)).toEqual([]);
+    });
+
+    test('and an element the probe does cross is still found', () => {
+        const wall = line(-44, 295, -5, 295);
+        const hits = findIntersection(wall, probe, true);
+        expect(hits.length).toBe(1);
+        expect(hits[0].xIntersection).toBeCloseTo(-8.008, 9);
+        expect(hits[0].yIntersection).toBeCloseTo(295, 9);
+    });
+
+    test('a shared corner is still a crossing, strict or not', () => {
+        // Strictness must not cost the contour its own joints: the corner lies on
+        // both segments, so the inclusive range test finds it without any
+        // allowance.
+        const a = line(0, 0, 10, 0);
+        const b = line(10, 0, 10, 10);
+        expect(findIntersection(a, b, true).length).toBeGreaterThan(0);
+        expect(findIntersection(a, b).length).toBeGreaterThan(0);
+    });
+
+    test('checkPointBelongsLine stops forgiving the overshoot', () => {
+        const seg = line(0, 0, 10, 0);
+        const past = {X: 10.05, Y: 0};
+        expect(checkPointBelongsLine(seg, past)).toBe(true);
+        expect(checkPointBelongsLine(seg, past, true)).toBe(false);
+        expect(checkPointBelongsLine(seg, {X: 5, Y: 0}, true)).toBe(true);
+    });
+
+    test('checkPointBelongsArc stops forgiving it too', () => {
+        // Quarter arc from (10,0) to (0,10) about the origin, counter-clockwise.
+        const quarter = arc(10, 0, 0, 10, 0, 0, 10, true);
+        const past = {X: 10 * Math.cos(-0.0005), Y: 10 * Math.sin(-0.0005)};
+
+        expect(checkPointBelongsArc(quarter, past)).toBe(true);
+        expect(checkPointBelongsArc(quarter, past, true)).toBe(false);
+        const inside = {X: 10 * Math.cos(0.7), Y: 10 * Math.sin(0.7)};
+        expect(checkPointBelongsArc(quarter, inside, true)).toBe(true);
+    });
+});
