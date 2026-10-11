@@ -167,6 +167,27 @@ everywhere.
 
 Turning only (G18). Milling is not covered: the column model needs a privileged axis.
 
+#### In-process stock (IPS)
+
+**IPS**, beside Equipment and Tool list, works out what the program leaves of the blank and can save
+it as a contour for the next operation. It does not need slow debug: pressing it runs the trace over
+the whole program in the background. A slow-debug run that reaches the end hands its own result over
+instead.
+
+When the stock is ready the button turns green and reads **show IPS** — pressing it draws the stock
+in place of the blank — and then **save IPS**, which writes a shape program into the program's own
+folder. Redraw brings the real blank back.
+
+The contour is lines and arcs within 0.3 mm of the stock the trace holds, so it is a handful of
+elements rather than the 0.2 mm staircase of the grid, and it is written in the units and the
+diameter mode the program runs under. Stock that came apart — parted off, or cut through by a groove
+— is offered as a row of small drawings to choose from.
+
+A program with no tool outline anywhere is refused rather than answered: an untouched blank would
+read as "this program removes nothing", which is not the same as "this program was not understood".
+A program where only some blocks lacked one is answered with a warning, since material still stands
+where those blocks cut.
+
 ### Interpolation
 
 Linear interpolation is supported including the ANG modifier.
