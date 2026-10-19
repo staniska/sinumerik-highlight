@@ -1250,6 +1250,30 @@ describe('gouges into the finished part', () => {
         expect(worstGouge()).toBeNull();
     });
 
+    // The report this guards against: `CUT INTO THE PART in 3 blocks. Deepest
+    // 0.000 mm radial`, from finishing blocks lying on the contour they were
+    // meant to cut.
+    test('a cut that only grazes the part is not a gouge', () => {
+        setupWithPart();
+        // 2 microns past the surface at radius 5 — under every approximation
+        // inside the swept region it is judged against.
+        const st = advanceMaterialTrace(cutTo(5 - 0.002), 1);
+
+        expect(st.removed).toBeGreaterThan(0);
+        expect(st.gouges).toEqual([]);
+        expect(worstGouge()).toBeNull();
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('a cut past the tolerance is a gouge, and its depth is not 0.000', () => {
+        setupWithPart();
+        const st = advanceMaterialTrace(cutTo(5 - 0.02), 1);
+
+        expect(st.gouges).toHaveLength(1);
+        expect(worstGouge().depth).toBeCloseTo(0.02, 6);
+        expect(worstGouge().depth.toFixed(3)).not.toBe('0.000');
+    });
+
     test('a cut reaching into the part is a gouge, with a depth in millimetres', () => {
         setupWithPart();
         // Sitting at radius 3 the outline spans 3..5, so it eats 2 mm of part.
