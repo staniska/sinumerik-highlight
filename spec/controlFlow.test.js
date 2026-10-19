@@ -371,6 +371,82 @@ describe('checkFor', () => {
         expect(View.sinumerikView.parseData.variables.firstChannelVariables['R1'].value).toBe(2);
         expect(result).toBe(-1);
     });
+
+    // Re-entering a FOR — nested in an outer loop, or reached again by a jump
+    // — used to find its variable holding the value it ended with, one past
+    // the limit, so the condition was false at once and the body never ran
+    // after the first pass. These drive the real sequence of calls parseRows
+    // makes: FOR, ENDFOR, FOR, ...
+    describe('re-entry', () => {
+        const programText = ['FOR R1=1 TO 2', 'G1 X10', 'ENDFOR'];
+
+        function forRow() {
+            return checkFor('FOR R1=1 TO 2', 'PROG', programText, 0);
+        }
+
+        function endforRow() {
+            return checkFor('ENDFOR', 'PROG', programText, 2);
+        }
+
+        beforeEach(() => {
+            View.sinumerikView.parseData.jumps['PROG'] = {for: []};
+            mathParse.mockReturnValue(1);
+            checkCondition.mockReturnValue(1);
+        });
+
+        test('the loop variable is seeded again on a second entry', () => {
+            forRow();
+            endforRow();            // R1 = 2
+            endforRow();            // R1 = 3
+            checkCondition.mockReturnValue(0);
+            forRow();               // the loop ends, R1 stays at 3
+
+            expect(View.sinumerikView.parseData.variables.firstChannelVariables['R1'].value).toBe(3);
+
+            checkCondition.mockReturnValue(1);
+            const result = forRow(); // entered again from an outer loop
+
+            expect(View.sinumerikView.parseData.variables.firstChannelVariables['R1'].value).toBe(1);
+            expect(result).toBe(0);
+        });
+
+        // The counterpart: the FOR row is also where every iteration re-tests
+        // the condition, and re-seeding there would make the loop endless.
+        test('coming round from ENDFOR does not re-seed', () => {
+            forRow();
+            endforRow();
+            forRow();
+
+            expect(View.sinumerikView.parseData.variables.firstChannelVariables['R1'].value).toBe(2);
+            expect(checkCondition).toHaveBeenLastCalledWith('2<=2', 'PROG');
+        });
+
+        // `FOR _I=_J TO 10` — the start value is evaluated again, not replayed
+        // from the first pass.
+        test('the start expression is re-evaluated, not remembered', () => {
+            forRow();
+            checkCondition.mockReturnValue(0);
+            forRow();
+
+            checkCondition.mockReturnValue(1);
+            mathParse.mockReturnValue(7);
+            forRow();
+
+            expect(View.sinumerikView.parseData.variables.firstChannelVariables['R1'].value).toBe(7);
+        });
+
+        // Leaving the body by a jump means the next arrival at the FOR row is
+        // an entry: nothing marked it as a continuation.
+        test('a jump out of the body leaves the loop re-enterable', () => {
+            forRow();
+            endforRow();
+            forRow();               // iteration 2, R1 = 2
+            // ... body jumps out past ENDFOR, so no ENDFOR this time ...
+            forRow();               // entered again later
+
+            expect(View.sinumerikView.parseData.variables.firstChannelVariables['R1'].value).toBe(1);
+        });
+    });
 });
 
 // --- checkIfGoto ---
