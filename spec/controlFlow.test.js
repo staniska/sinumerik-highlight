@@ -36,6 +36,8 @@ beforeEach(() => {
     View.sinumerikView.parseData.jumps = {};
     View.sinumerikView.parseData.errors = [];
     View.sinumerikView.parseData.variables = {firstChannelVariables: {}};
+    View.sinumerikView.parseData.jumpKeySeq = {};
+    View.sinumerikView.parseData.abortParse = false;
     View.sinumerikView.savedMaxJumps = undefined;
 
     checkCondition.mockReset();
@@ -138,6 +140,25 @@ describe('checkGoTo', () => {
         expect(result).toBe(2);
         expect(View.sinumerikView.parseData.errors.length).toBeGreaterThan(0);
     });
+
+    // Reaching the last row ends only this programText — in a subroutine the
+    // caller would go on and could call it again. The flag is what actually
+    // stops the run (interpretator.js::parseRows, primitives.js recursion).
+    test('refusing more jumps at GOTOB aborts the whole parse', () => {
+        const programText = ['G1 X0', 'START:', 'G1 X5', 'GOTOB START'];
+        View.sinumerikView.parseData.jumps['PROG'] = {goto: []};
+        View.sinumerikView.parseData.jumps['PROG'].goto[3] = {
+            jumps: 1001, maxJumps: 1000, type: 'GOTO', destinationRow: 1
+        };
+        View.sinumerikView.parseData.abortParse = false;
+        confirmDialog.mockReturnValue(false);
+
+        const result = checkGoTo('GOTOB START', 'PROG', programText, 3);
+
+        expect(result).toBe(programText.length - 1);
+        expect(View.sinumerikView.parseData.abortParse).toBe(true);
+        expect(View.sinumerikView.parseData.jumps['PROG'].goto[3].jumps).toBe(0);
+    });
 });
 
 // --- checkIfElseEndif ---
@@ -234,6 +255,59 @@ describe('checkWhile', () => {
 
         // returns while - 1 = 0 - 1 = -1 (parseRows will do row++ → row 0)
         expect(result).toBe(-1);
+    });
+
+    // The counter belongs to one entry into the loop. Left above the limit, it
+    // made the limit question come back on the first iteration of every
+    // re-entry (an outer loop, a subroutine called twice) until the process was
+    // killed.
+    test('WHILE with false condition clears the jump counter', () => {
+        const programText = ['WHILE R1<5', 'G1 X10', 'ENDWHILE'];
+        View.sinumerikView.parseData.jumps['PROG'] = {while: []};
+        View.sinumerikView.parseData.jumps['PROG'].while[0] = {
+            jumps: 1001, maxJumps: 1000, type: 'WHILE', while: 0, endwhile: 2
+        };
+        checkCondition.mockReturnValue(0);
+
+        checkWhile('WHILE R1<5', 'PROG', programText, 0);
+
+        expect(View.sinumerikView.parseData.jumps['PROG'].while[0].jumps).toBe(0);
+    });
+
+    test('refusing more jumps at ENDWHILE aborts the whole parse', () => {
+        const programText = ['WHILE R1<5', 'G1 X10', 'ENDWHILE'];
+        View.sinumerikView.parseData.jumps['PROG'] = {while: []};
+        View.sinumerikView.parseData.jumps['PROG'].while[0] = {
+            jumps: 1000, maxJumps: 1000, type: 'WHILE', while: 0, endwhile: 2
+        };
+        View.sinumerikView.parseData.abortParse = false;
+        confirmDialog.mockReturnValue(false);
+
+        const result = checkWhile('ENDWHILE', 'PROG', programText, 2);
+
+        expect(result).toBe(2);
+        expect(View.sinumerikView.parseData.abortParse).toBe(true);
+        expect(View.sinumerikView.parseData.jumps['PROG'].while[0].jumps).toBe(0);
+        expect(View.sinumerikView.parseData.errors.length).toBeGreaterThan(0);
+    });
+
+    // Doubling, not +1000: a loop that needs tens of thousands of iterations
+    // would otherwise ask again every 1000 of them. The starting limit is not
+    // 1000 here so that doubling and adding give different answers.
+    test('accepting more jumps at ENDWHILE doubles the limit and parses on', () => {
+        const programText = ['WHILE R1<5', 'G1 X10', 'ENDWHILE'];
+        View.sinumerikView.parseData.jumps['PROG'] = {while: []};
+        View.sinumerikView.parseData.jumps['PROG'].while[0] = {
+            jumps: 1500, maxJumps: 1500, type: 'WHILE', while: 0, endwhile: 2
+        };
+        View.sinumerikView.parseData.abortParse = false;
+        confirmDialog.mockReturnValue(true);
+
+        const result = checkWhile('ENDWHILE', 'PROG', programText, 2);
+
+        expect(result).toBe(-1);
+        expect(View.sinumerikView.parseData.jumps['PROG'].while[0].maxJumps).toBe(3000);
+        expect(View.sinumerikView.parseData.abortParse).toBe(false);
     });
 
     test('WHILE pushes error and returns -1 when ENDWHILE not found', () => {
@@ -337,5 +411,136 @@ describe('checkIfGoto', () => {
 
         expect(result).toBe(1);
         expect(View.sinumerikView.parseData.errors.length).toBeGreaterThan(0);
+    });
+});
+
+// --- saved jump limits ---
+
+// A limit the user agreed to is remembered for the rest of the Pulsar session,
+// keyed by what the construction says rather than by the row it sits on
+// (controlFlow.js::jumpKey). These tests drive WHILE, whose record is created
+// at the WHILE row and whose dialog fires at ENDWHILE.
+describe('saved jump limits', () => {
+    const programText = ['WHILE R1<5', 'G1 X10', 'ENDWHILE'];
+
+    // One parse of a WHILE: the record is created on the way in.
+    function enterWhile(programName, rowText = 'WHILE R1<5', text = programText, row = 0) {
+        if (!View.sinumerikView.parseData.jumps[programName]) {
+            View.sinumerikView.parseData.jumps[programName] = {while: []};
+        }
+        checkCondition.mockReturnValue(1);
+        checkWhile(rowText, programName, text, row);
+        return View.sinumerikView.parseData.jumps[programName].while[row];
+    }
+
+    // Everything the next parse of the same text starts from scratch with.
+    function nextParse() {
+        View.sinumerikView.parseData.jumps = {};
+        View.sinumerikView.parseData.jumpKeySeq = {};
+    }
+
+    // Exhaust the limit and answer the dialog at ENDWHILE.
+    function exhaust(programName, answer, endwhileRow = 2) {
+        const entry = View.sinumerikView.parseData.jumps[programName].while[0];
+        entry.jumps = entry.maxJumps;
+        confirmDialog.mockReturnValue(answer);
+        checkWhile('ENDWHILE', programName, programText, endwhileRow);
+        return entry;
+    }
+
+    test('a new record starts at the default limit', () => {
+        expect(enterWhile('PROG').maxJumps).toBe(1000);
+    });
+
+    test('an agreed limit is reused by the next parse without asking again', () => {
+        enterWhile('PROG');
+        exhaust('PROG', true, 2);
+        expect(View.sinumerikView.parseData.jumps['PROG'].while[0].maxJumps).toBe(2000);
+
+        nextParse();
+        confirmDialog.mockClear();
+        const entry = enterWhile('PROG');
+
+        expect(entry.maxJumps).toBe(2000);
+        expect(confirmDialog).not.toHaveBeenCalled();
+    });
+
+    // The whole point of keying by text: inserting lines above the loop used to
+    // hand its limit to whatever ended up on that row.
+    test('the limit follows the loop when its row moves', () => {
+        enterWhile('PROG');
+        exhaust('PROG', true, 2);
+
+        nextParse();
+        const moved = ['G1 X0', 'G1 X1', 'WHILE R1<5', 'G1 X10', 'ENDWHILE'];
+        const entry = enterWhile('PROG', 'WHILE R1<5', moved, 2);
+
+        expect(entry.maxJumps).toBe(2000);
+    });
+
+    test('a changed loop condition gets the default limit back', () => {
+        enterWhile('PROG');
+        exhaust('PROG', true, 2);
+
+        nextParse();
+        const edited = ['WHILE R1<6', 'G1 X10', 'ENDWHILE'];
+
+        expect(enterWhile('PROG', 'WHILE R1<6', edited, 0).maxJumps).toBe(1000);
+    });
+
+    // Only the keyword itself is case-sensitive to the parser (the regexes in
+    // controlFlow.js are), so the variable's case and the spacing are what a
+    // key has to survive.
+    test('whitespace and the condition\'s case do not change the key', () => {
+        enterWhile('PROG');
+        exhaust('PROG', true, 2);
+
+        nextParse();
+        const retyped = ['WHILE  r1<5', 'G1 X10', 'ENDWHILE'];
+
+        expect(enterWhile('PROG', 'WHILE  r1<5', retyped, 0).maxJumps).toBe(2000);
+    });
+
+    test('another program does not inherit the limit', () => {
+        enterWhile('PROG');
+        exhaust('PROG', true, 2);
+
+        nextParse();
+
+        expect(enterWhile('OTHER').maxJumps).toBe(1000);
+    });
+
+    // Two identical headers share nothing: the second is told apart by an
+    // occurrence number counted per text.
+    test('identical loop headers in one program get separate limits', () => {
+        const twoLoops = ['WHILE R1<5', 'ENDWHILE', 'WHILE R1<5', 'ENDWHILE'];
+        enterWhile('PROG', 'WHILE R1<5', twoLoops, 0);
+        const second = enterWhile('PROG', 'WHILE R1<5', twoLoops, 2);
+
+        expect(View.sinumerikView.parseData.jumps['PROG'].while[0].key).toBe('WHILE:WHILE R1<5');
+        expect(second.key).toBe('WHILE:WHILE R1<5#2');
+
+        exhaust('PROG', true, 1);
+
+        nextParse();
+        enterWhile('PROG', 'WHILE R1<5', twoLoops, 0);
+        const secondAgain = enterWhile('PROG', 'WHILE R1<5', twoLoops, 2);
+
+        expect(View.sinumerikView.parseData.jumps['PROG'].while[0].maxJumps).toBe(2000);
+        expect(secondAgain.maxJumps).toBe(1000);
+    });
+
+    // A refusal is deliberately NOT remembered: hiding the dialog from someone
+    // who misclicked would be worse than asking again.
+    test('a refusal is not remembered and the dialog comes back', () => {
+        enterWhile('PROG');
+        exhaust('PROG', false, 2);
+        expect(View.sinumerikView.parseData.abortParse).toBe(true);
+
+        nextParse();
+        View.sinumerikView.parseData.abortParse = false;
+
+        expect(enterWhile('PROG').maxJumps).toBe(1000);
+        expect(View.sinumerikView.savedMaxJumps).toBeUndefined();
     });
 });

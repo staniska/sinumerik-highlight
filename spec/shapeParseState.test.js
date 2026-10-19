@@ -53,6 +53,8 @@ function makeParseData() {
         offn: 0.2,
         spindleSpeed: {type: 'G96', value: 200, limit: 3000},
         feed: {type: 'G95', value: 0.25},
+        abortParse: false,
+        jumpKeySeq: {'MAIN_MPF\u0000WHILE:R1<5': 1},
 
         variables: {MAIN_MPF: {R1: 5}},
         jumps: {MAIN_MPF: {goto: []}},
