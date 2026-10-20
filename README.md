@@ -126,17 +126,42 @@ SLDebug footer next to Equipment. Each entry is a sectioned shape file (above) d
 and its holder; the list is stored per machine, because a tool lives in a turret rather than in a
 file.
 
-A program names a tool and nothing more. The **insert** arrow on a list row writes `;TOOL:NAME` at
-the cursor, and from that line on the tool is drawn translucently on the trajectory during slow
-debug, in the WebGL and the 3D view. The marker may stand anywhere a comment may, the program's
-header included. It is modal and leaks into subroutines, like the rest of the modal state; the last
-one executed wins.
+The window is a list on the left and a preview of the selected tool on the right, with the actions
+in the footer. Clicking a row selects it; `Up` and `Down` walk the list and wrap round its ends.
+The search field above the list is not implemented yet and is disabled rather than absent, so that
+it cannot silently do nothing when typed into.
 
-The nose circle — which is what tool-radius compensation turns about — comes from the file's
-declared `$TC_DP6` (nose radius) and `$TC_DP2` (cutting-edge position), the drawing being used only
-when neither is given. The nine positions mean the same thing on every lathe; what changes from
-machine to machine is only how they are seen, which is why Machine Manager shows them arranged
-differently per machine type and carriage.
+A program names a tool and nothing more. **Insert**, or `Enter`, writes `;TOOL:NAME` at the cursor
+and from that line on the tool is drawn translucently on the trajectory during slow debug, in the
+WebGL and the 3D view. The marker may stand anywhere a comment may, the program's header included.
+It is modal and leaks into subroutines, like the rest of the modal state; the last one executed
+wins.
+
+The window works with the line the cursor is on. Opening it on a line that already carries a
+`;TOOL:` marker selects that tool, and `Enter` then writes the new name **over** the old marker
+instead of adding a second one next to it — only the name is replaced, so the spacing and anything
+else on the line stay as they were. On a line without a marker the new one goes on a line of its
+own, and `Enter` closes the window either way. `Escape` closes it without writing anything.
+
+Reading a tool file and parsing the program use the same machinery and cannot run at once, so the
+**Tool list** buttons are disabled while a parse is in flight, and while the window is open the
+program is not redrawn: `Ctrl + Alt + R` says to close the window first, and an edit made to the
+program behind it is drawn when it closes.
+
+The preview is drawn in the axes of the machine the list belongs to — the same arrangement as the
+nine cutting-edge positions in Machine Manager and as the trajectory on the SLDebug canvas, so a
+tool faces the same way everywhere. It shows the sections in their own colours with the cutting edge
+over the body, the reference point `P` the file is drawn about, and two nose circles: a solid one
+measured from the drawing and a dashed one computed from the declared numbers. The nose circle —
+which is what tool-radius compensation turns about — comes from the declared `$TC_DP6` (nose radius)
+and `$TC_DP2` (cutting-edge position), the drawing being used only when neither is given, so when
+the two circles do not coincide the file describes two different tools and the compensation will not
+be the one the picture promises. The line under the preview says how many sections cut, where each
+nose sits and whether the radii differ.
+
+The nine positions mean the same thing on every lathe; what changes from machine to machine is only
+how they are seen, which is why Machine Manager shows them arranged differently per machine type and
+carriage.
 
 ### Material trace
 

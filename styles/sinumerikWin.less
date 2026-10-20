@@ -904,7 +904,90 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  min-width: 280px;
+  // Wide enough for the list and the preview side by side: the picture is the
+  // point of the window, and a narrow column would leave it postage-stamp.
+  min-width: 560px;
+}
+
+.sinumerik-tools-body {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.sinumerik-tools-left {
+  display: flex;
+  flex-direction: column;
+  width: 190px;
+  flex: none;
+}
+
+// The modal panel is outside `.sinumerikPanel`, so the shared input rule does
+// not reach it and the field is dressed here.
+.sinumerik-tools-search {
+  margin-bottom: 6px;
+  background-color: @sin-input-bg;
+  color: @sin-text;
+  border: 1px solid @sin-border;
+  border-radius: 3px;
+  padding: 2px 4px;
+
+  &:disabled {
+    color: @sin-text-subtle;
+  }
+}
+
+.sinumerik-tools-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 170px;
+  max-height: 260px;
+}
+
+.sinumerik-tools-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.sinumerik-tools-preview-name {
+  padding-bottom: 4px;
+}
+
+// The canvas is painted from these: a 2d context needs real colour values and
+// the theme's live in LESS, the same route `changePauseBackground` takes.
+.sinumerik-tools-preview-canvas {
+  width: 100%;
+  height: 230px;
+  border: 1px solid @sin-border;
+  border-radius: 3px;
+  background-color: @sin-inset-bg;
+
+  // Interpolation, not a bare `@var`: Less passes a custom property's value
+  // through verbatim, so `--x: @sin-text` would emit that name as text and the
+  // canvas would be handed a string no colour parser accepts. `previewColors`
+  // checks each value anyway and falls back to the element's own colours.
+  --tool-preview-bg:   ~"@{sin-inset-bg}";
+  --tool-preview-axis: ~"@{sin-text-subtle}";
+  --tool-preview-text: ~"@{sin-text}";
+  --tool-preview-warn: ~"@{sin-text-warning}";
+  --tool-preview-nose: ~"@{sin-text-info}";
+}
+
+.sinumerik-tools-preview-info {
+  color: @sin-text-subtle;
+  padding-top: 6px;
+  white-space: pre-line;
+}
+
+.sinumerik-tools-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid @sin-border;
 }
 
 .sinumerik-tools-close-button {
@@ -932,11 +1015,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 0;
+  padding: 2px 4px;
+  cursor: pointer;
 
   &:hover {
     background-color: @sin-highlight-bg;
   }
+}
+
+.sinumerik-tools-element--selected,
+.sinumerik-tools-element--selected:hover {
+  background-color: @sin-btn-selected;
+  color: @sin-text-selected;
 }
 
 .sinumerik-tools-name {

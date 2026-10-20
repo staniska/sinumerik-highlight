@@ -21,6 +21,10 @@ jest.mock('../lib/interpretator', () => ({
     runShapeFileParse: jest.fn(async () => ({
         name: null, variables: {}, sections: [], warnings: [], errors: [],
     })),
+    // The panel asks whether a parse is in flight (the Tool list openers go
+    // dead while one is) and subscribes to both edges of it at module load.
+    isParseBusy: jest.fn(() => false),
+    onParseBusyChange: jest.fn(),
 }));
 
 const View = require('../lib/sinumerik').default;
@@ -143,5 +147,195 @@ describe('whose tools the panel is about', () => {
         withOpenProgram(null);
 
         expect(machineTools()).toEqual([]);
+    });
+});
+
+// Keyboard navigation of the list.
+//
+// There is no DOM harness for the panel, so the selection — which the module
+// keeps private — is read through what Enter does with it: the marker that
+// reaches the editor names the tool that was selected. That also covers the
+// two rules worth pinning down, wrap-around and insert-and-close.
+describe('keyboard navigation', () => {
+    const THREE_TOOLS = {
+        machineManagerData: {selectedMachine: 'LATHE1'},
+        machineData: {tools: {LATHE1: [{name: 'A'}, {name: 'B'}, {name: 'C'}]}},
+    };
+
+    let handleToolsKey;
+    let inserted;
+    let replaced;
+    let closed;
+
+    // Enough of an editor for the panel: a cursor on a row, the text of that
+    // row, and the two ways the marker can be written.
+    const withEditor = (lines, row = 0) => {
+        globalThis.atom = {
+            workspace: {
+                getActiveTextEditor: () => ({
+                    getPath: () => '/p/main.mpf',
+                    getCursorBufferPosition: () => ({row, column: 0}),
+                    lineTextForBufferRow: at => lines[at],
+                    insertText: text => inserted.push(text),
+                    setTextInBufferRange: (range, text) => replaced.push({range, text}),
+                }),
+            },
+        };
+    };
+
+    beforeEach(() => {
+        inserted = [];
+        replaced = [];
+        closed = 0;
+
+        // A fresh copy per test: the selected tool is module state, and a test
+        // that inherited it from the one before would pass for the wrong
+        // reason.
+        jest.isolateModules(() => {
+            const module = require('../lib/tools');
+            handleToolsKey = module.handleToolsKey;
+        });
+
+        View.sinumerikView = {...THREE_TOOLS};
+        View.toggleTools = () => {
+            closed += 1;
+        };
+        withEditor(['G0 X0 Z0']);
+    });
+
+    const press = key => handleToolsKey({key, preventDefault: () => {}, stopPropagation: () => {}});
+
+    test('Down from nothing selected lands on the first tool', () => {
+        expect(press('ArrowDown')).toBe(true);
+        press('Enter');
+        expect(inserted).toEqual([';TOOL:A\n']);
+    });
+
+    test('Up from nothing selected lands on the last one', () => {
+        press('ArrowUp');
+        press('Enter');
+        expect(inserted).toEqual([';TOOL:C\n']);
+    });
+
+    test('Down walks the list and wraps round the end', () => {
+        press('ArrowDown');
+        press('ArrowDown');
+        press('ArrowDown');
+        press('ArrowDown');
+        press('Enter');
+        expect(inserted).toEqual([';TOOL:A\n']);
+    });
+
+    test('Up wraps the other way', () => {
+        press('ArrowDown');
+        press('ArrowUp');
+        press('Enter');
+        expect(inserted).toEqual([';TOOL:C\n']);
+    });
+
+    test('Enter inserts the marker and closes the window', () => {
+        press('ArrowDown');
+        press('ArrowDown');
+        expect(press('Enter')).toBe(true);
+        expect(inserted).toEqual([';TOOL:B\n']);
+        expect(closed).toBe(1);
+    });
+
+    test('Enter with nothing selected does nothing, and leaves the window open', () => {
+        expect(press('Enter')).toBe(false);
+        expect(inserted).toEqual([]);
+        expect(closed).toBe(0);
+    });
+
+    test('Enter with no editor to insert into keeps the window open', () => {
+        globalThis.atom = {workspace: {getActiveTextEditor: () => null}};
+        press('ArrowDown');
+        expect(press('Enter')).toBe(false);
+        expect(closed).toBe(0);
+    });
+
+    test('a machine with no tools ignores the keys rather than throwing', () => {
+        View.sinumerikView = {machineManagerData: {selectedMachine: 'LATHE1'}, machineData: {tools: {}}};
+        expect(press('ArrowDown')).toBe(false);
+        expect(press('Enter')).toBe(false);
+    });
+
+    test('other keys are not claimed, so Escape still reaches the panel', () => {
+        expect(press('Escape')).toBe(false);
+        expect(press('a')).toBe(false);
+    });
+
+    test('Enter over a marker already on the cursor line replaces its name', () => {
+        withEditor([';TOOL:A']);
+        press('ArrowDown');
+        press('ArrowDown');
+        expect(press('Enter')).toBe(true);
+
+        // Only the name's span is written, so the rest of the line survives.
+        expect(replaced).toEqual([{range: [[0, 6], [0, 7]], text: 'B'}]);
+        expect(inserted).toEqual([]);
+        expect(closed).toBe(1);
+    });
+
+    test('the author\'s own spacing and anything after the marker are left alone', () => {
+        withEditor(['; tool: a   ; roughing']);
+        press('ArrowDown');
+        press('ArrowDown');
+        press('Enter');
+
+        expect(replaced).toEqual([{range: [[0, 8], [0, 9]], text: 'B'}]);
+    });
+
+    test('Enter on a marker that already names the selected tool writes nothing', () => {
+        withEditor([';TOOL:A']);
+        press('ArrowDown');
+        expect(press('Enter')).toBe(true);
+
+        expect(replaced).toEqual([]);
+        expect(inserted).toEqual([]);
+        // Still closed: the program says what it was asked to say.
+        expect(closed).toBe(1);
+    });
+
+    test('a line with no marker gets one on a line of its own, as before', () => {
+        withEditor(['G1 X10']);
+        press('ArrowDown');
+        press('Enter');
+
+        expect(inserted).toEqual([';TOOL:A\n']);
+        expect(replaced).toEqual([]);
+    });
+
+    test('the marker is read off the row the cursor is on, not the first row', () => {
+        withEditor(['G0 X0', ';TOOL:C', 'G1 X1'], 1);
+        press('ArrowDown');
+        press('Enter');
+
+        expect(replaced).toEqual([{range: [[1, 6], [1, 7]], text: 'A'}]);
+    });
+});
+
+// The tool a line names, as the panel picks it up when the window opens.
+describe('toolFromCursorLine', () => {
+    const {toolFromCursorLine} = require('../lib/tools');
+    const tools = [{name: 'TURN35'}, {name: 'Groove'}];
+
+    test('the list\'s own spelling comes back, whatever the line used', () => {
+        expect(toolFromCursorLine(';TOOL:groove', tools)).toBe('Groove');
+        expect(toolFromCursorLine('; tool: TURN35', tools)).toBe('TURN35');
+    });
+
+    test('a tool this machine does not have is not selected', () => {
+        expect(toolFromCursorLine(';TOOL:MILL8', tools)).toBeNull();
+    });
+
+    test('a line with no marker, and a marker that is not at the start of one', () => {
+        expect(toolFromCursorLine('G1 X10', tools)).toBeNull();
+        expect(toolFromCursorLine('G1 X10 ;TOOL:TURN35', tools)).toBeNull();
+    });
+
+    test('nothing to read is not an error', () => {
+        expect(toolFromCursorLine(undefined, tools)).toBeNull();
+        expect(toolFromCursorLine(';TOOL:TURN35', undefined)).toBeNull();
     });
 });

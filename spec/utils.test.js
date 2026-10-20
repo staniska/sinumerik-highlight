@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -302,5 +302,42 @@ describe('traceFrameTarget', () => {
         expect(traceFrameTarget(null, null, 9, 7)).toEqual({limit: 7, partial: null});
         // A stale mapping is no mapping: lengths that disagree are not trusted.
         expect(traceFrameTarget([0, 0], [1], 1, 2)).toEqual({limit: 1, partial: null});
+    });
+});
+
+// The `;TOOL:NAME` marker. Read by the parser and rewritten in place by the
+// Tools panel, so the span matters as much as the name: it is what lets the
+// name be replaced without touching the rest of the line.
+describe('toolMarkerOf', () => {
+    test('the name and the span it occupies', () => {
+        expect(toolMarkerOf(';TOOL:TURN35')).toEqual({name: 'TURN35', start: 6, end: 12});
+        const line = ';TOOL:TURN35';
+        const {start, end} = toolMarkerOf(line);
+        expect(line.slice(start, end)).toBe('TURN35');
+    });
+
+    test('the spellings the parser accepts: leading space, a space after the semicolon, any case', () => {
+        expect(toolMarkerOf('  ; tool:  groove').name).toBe('groove');
+        expect(toolMarkerOf('   ;TOOL:A')).toEqual({name: 'A', start: 9, end: 10});
+    });
+
+    test('what follows the name is not part of it', () => {
+        expect(toolMarkerOf(';TOOL:A ; roughing')).toEqual({name: 'A', start: 6, end: 7});
+    });
+
+    test('a marker not at the start of the line is inside a comment already begun, and is not read', () => {
+        expect(toolMarkerOf('G1 X10 ;TOOL:A')).toBeNull();
+        expect(toolMarkerOf(';comment ;TOOL:A')).toBeNull();
+    });
+
+    test('CRLF does not become part of the name', () => {
+        expect(toolMarkerOf(';TOOL:A\r').name).toBe('A');
+    });
+
+    test('nothing to read', () => {
+        expect(toolMarkerOf('')).toBeNull();
+        expect(toolMarkerOf(';TOOL:')).toBeNull();
+        expect(toolMarkerOf(null)).toBeNull();
+        expect(toolMarkerOf(undefined)).toBeNull();
     });
 });
