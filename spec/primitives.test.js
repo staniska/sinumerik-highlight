@@ -784,6 +784,112 @@ describe('CHF operator wiring', () => {
     });
 });
 
+describe('feed operator wiring', () => {
+    // Every feed word has to be claimed by the feed region. One that is not
+    // falls through the whole operand chain and reports "Not one parser
+    // worked" — which is how FRC, FRCM and FA used to behave.
+    const parseRowsFn = jest.fn();
+    const PROG = 'PROG';
+
+    const firstOperator = async (row) => {
+        const result = await generatePrimitives(row, PROG, 0, [row], parseRowsFn);
+        return result.operators[0];
+    };
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.errors = [];
+    });
+
+    test('F is the modal feed', async () => {
+        expect(await firstOperator('F100')).toEqual({type: 'F_feed', value: '100'});
+    });
+
+    test('FB is the block-local feed', async () => {
+        expect(await firstOperator('FB=500')).toEqual({type: 'FB_feed', value: '=500'});
+    });
+
+    test('FA is the axial feed', async () => {
+        expect(await firstOperator('FA=1000')).toEqual({type: 'FA_feed', value: '=1000'});
+    });
+
+    test('FRC and FRCM are the chamfer-rounding feeds', async () => {
+        expect(await firstOperator('FRC=0.1')).toEqual({type: 'FRC_feed', value: '=0.1'});
+        expect(await firstOperator('FRCM=0.1')).toEqual({type: 'FRCM_feed', value: '=0.1'});
+    });
+
+    test('the leading = is left on the value for calcValue to strip', async () => {
+        expect(await firstOperator('F=R1*(R2+3)')).toEqual({type: 'F_feed', value: '=R1*(R2+3)'});
+        expect(await firstOperator('FB=R1*2')).toEqual({type: 'FB_feed', value: '=R1*2'});
+    });
+
+    test('none of them reports a parse error', async () => {
+        for (const row of ['F100', 'F=R1*2', 'FB=500', 'FA=1000', 'FRC=0.1', 'FRCM=0.1']) {
+            await firstOperator(row);
+        }
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    test('a word that only starts like a feed is still not a feed', async () => {
+        // The lookahead wants `=` or a digit right after the word, so FFWON and
+        // friends keep falling through to whoever owns them.
+        expect((await firstOperator('FB')).type).not.toMatch(/_feed$/);
+    });
+});
+
+describe('feed snapshot on the canvas element', () => {
+    // `time.js` is the only reader of `element.feed`. The snapshot is taken when
+    // the element is created, because an element carrying RND/CHR/CHF waits in
+    // `prevMove` and reaches the canvas a block later.
+    const PROG = 'PROG';
+
+    const g1Primitives = (x, y, extraOperators = []) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G1'},
+            {type: 'coordinate', name: 'X', value: String(x)},
+            {type: 'coordinate', name: 'Y', value: String(y)},
+            ...extraOperators,
+        ]
+    });
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.rndm = 0;
+        View.sinumerikView.parseData.feed = {type: 'G95', value: 0.25};
+        View.sinumerikView.parseData.blockFeed = null;
+    });
+
+    test('without FB the element carries the modal feed', () => {
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas[0].feed).toEqual({type: 'G95', value: 0.25});
+    });
+
+    test('a pending FB replaces the value and keeps the feed type', () => {
+        View.sinumerikView.parseData.blockFeed = 500;
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas[0].feed).toEqual({type: 'G95', value: 500});
+    });
+
+    test('the snapshot is a copy — a later modal change does not reach it', () => {
+        generateCanvasPrimitives(g1Primitives(10, 5), PROG, 0);
+        View.sinumerikView.parseData.feed.value = 999;
+
+        expect(View.sinumerikView.parseData.canvas[0].feed.value).toBe(0.25);
+    });
+
+    test('an element held in prevMove by CHR keeps the feed of its own block', () => {
+        // This is the case the push-time snapshot got wrong: the element leaves
+        // for the canvas only on the next move block, with that block's feed.
+        View.sinumerikView.parseData.blockFeed = 500;
+        generateCanvasPrimitives(g1Primitives(10, 5, [{type: 'coordinate', subtype: 'CHR', value: '3'}]), PROG, 0);
+
+        expect(View.sinumerikView.parseData.canvas).toHaveLength(0);
+        expect(View.sinumerikView.parseData.prevMove[0].feed).toEqual({type: 'G95', value: 500});
+    });
+});
+
 describe('callStack propagation', () => {
     // Simulate what primitives.js does after parseRowsFn returns:
     // stamp callStack entries onto elements added during the sub call.

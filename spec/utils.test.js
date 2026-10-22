@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -339,5 +339,39 @@ describe('toolMarkerOf', () => {
         expect(toolMarkerOf(';TOOL:')).toBeNull();
         expect(toolMarkerOf(null)).toBeNull();
         expect(toolMarkerOf(undefined)).toBeNull();
+    });
+});
+
+// normalizeFeedValue — the gate between `calcValue` and `feed.value`.
+//
+// `calcValue` returns a string for a literal, a number for an expression and
+// null when the expression could not be evaluated. Only a positive finite
+// number is a feed.
+describe('normalizeFeedValue', () => {
+    test('a literal comes back as a number, not a string', () => {
+        expect(normalizeFeedValue('100')).toEqual({value: 100});
+    });
+
+    test('a computed expression passes through', () => {
+        expect(normalizeFeedValue(1200)).toEqual({value: 1200});
+        expect(normalizeFeedValue(0.25)).toEqual({value: 0.25});
+    });
+
+    test('null from an expression that could not be evaluated is rejected', () => {
+        expect(normalizeFeedValue(null)).toEqual({error: 'nan'});
+    });
+
+    test('something that is not a number at all is rejected', () => {
+        expect(normalizeFeedValue(undefined)).toEqual({error: 'nan'});
+        expect(normalizeFeedValue('')).toEqual({error: 'nan'});
+        expect(normalizeFeedValue('abc')).toEqual({error: 'nan'});
+        expect(normalizeFeedValue(NaN)).toEqual({error: 'nan'});
+        expect(normalizeFeedValue(Infinity)).toEqual({error: 'nan'});
+    });
+
+    test('zero and negative are rejected separately — the control rejects FB=0 too', () => {
+        expect(normalizeFeedValue(0)).toEqual({error: 'nonpositive'});
+        expect(normalizeFeedValue('0')).toEqual({error: 'nonpositive'});
+        expect(normalizeFeedValue(-100)).toEqual({error: 'nonpositive'});
     });
 });

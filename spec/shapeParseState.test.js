@@ -53,6 +53,7 @@ function makeParseData() {
         offn: 0.2,
         spindleSpeed: {type: 'G96', value: 200, limit: 3000},
         feed: {type: 'G95', value: 0.25},
+        blockFeed: 300,
         abortParse: false,
         jumpKeySeq: {'MAIN_MPF\u0000WHILE:R1<5': 1},
 
@@ -137,6 +138,7 @@ function trashEverything(pd) {
     pd.offn = 7;
     pd.spindleSpeed = {type: 'G97', value: 1, limit: 20000};
     pd.feed = {type: 'G94', value: 100};
+    pd.blockFeed = 999;
 
     pd.variables.SHAPEFILE_1_0 = {R1: 1};
     pd.jumps.SHAPEFILE_1_0 = {goto: []};

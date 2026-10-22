@@ -146,7 +146,7 @@
        sinumerik_feed:
         patterns: [
           {
-            "match": "(?<=[\\s]|^)(F|FA|FB)(?=\\=?\\d+)"
+            "match": "(?<=[\\s]|^)(FRCM|FRC|FB|FA|F)(?=\\=?\\d+)"
             "name": "sinumerik_feed"
           }
           {
