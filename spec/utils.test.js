@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -373,5 +373,55 @@ describe('normalizeFeedValue', () => {
         expect(normalizeFeedValue(0)).toEqual({error: 'nonpositive'});
         expect(normalizeFeedValue('0')).toEqual({error: 'nonpositive'});
         expect(normalizeFeedValue(-100)).toEqual({error: 'nonpositive'});
+    });
+});
+
+// stickyMsgAt — the hanging MSG as a function of the position.
+//
+// This is what makes a rewind restore the message: nothing remembers it, it is
+// read back from the element list every time the position moves.
+describe('stickyMsgAt', () => {
+    const msg = (value) => ({type: 'msg', value});
+    const move = () => ({type: 'G1'});
+
+    test('the last message before the position wins', () => {
+        const elements = [msg('FIRST'), move(), msg('SECOND'), move()];
+        expect(stickyMsgAt(elements, 4)).toBe('SECOND');
+    });
+
+    test('a message further along the program is not shown yet', () => {
+        const elements = [msg('FIRST'), move(), msg('SECOND'), move()];
+        expect(stickyMsgAt(elements, 2)).toBe('FIRST');
+    });
+
+    test('a message standing exactly at the position has not been reached', () => {
+        const elements = [msg('FIRST'), move(), msg('SECOND')];
+        expect(stickyMsgAt(elements, 2)).toBe('FIRST');
+    });
+
+    test('nothing drawn yet, nothing to show', () => {
+        expect(stickyMsgAt([msg('FIRST'), move()], 0)).toBe('');
+    });
+
+    test('an empty MSG takes the message down', () => {
+        const elements = [msg('FIRST'), move(), msg(''), move()];
+        expect(stickyMsgAt(elements, 4)).toBe('');
+    });
+
+    test('a program with no message at all', () => {
+        expect(stickyMsgAt([move(), move()], 2)).toBe('');
+    });
+
+    test('a position past the end of the list is the end of the list', () => {
+        expect(stickyMsgAt([msg('FIRST'), move()], 999)).toBe('FIRST');
+    });
+
+    test('nothing to walk', () => {
+        expect(stickyMsgAt([], 5)).toBe('');
+        expect(stickyMsgAt(undefined, 5)).toBe('');
+    });
+
+    test('a message with no value at all reads as empty', () => {
+        expect(stickyMsgAt([{type: 'msg'}], 1)).toBe('');
     });
 });

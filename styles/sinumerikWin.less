@@ -1075,28 +1075,79 @@
 }
 
 // msg_div.js
-.sinumerikMsgDiv {
+// The message rows, stacked over the graphics area: the hanging MSG and, under
+// it, a modal M0/M1 — a pause never covers the message it happens on top of.
+//
+// The width is a share of this container — the main window is the canvas area
+// itself (100% x 100%, same place) — so a row is the same width whatever the
+// message says. It used to be measured off the Canvas 2D element, which is
+// taken out of the DOM while the WebGL or the 3D renderer is up: the width came
+// out as 0 there and the row shrank to fit its own text.
+//
+// Clicks pass through to the canvas (`pointer-events`), because the hanging row
+// can stand over the graphics for half a program; the rows themselves take
+// their events back so their buttons work.
+.sinumerikMsgStack {
   position: absolute;
-  left: 20px;
+  left: 2.5%;
+  width: 95%;
   top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.sinumerikMsgDiv {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 6px;
   background: @sin-overlay-bg;
   border: 1px solid @sin-text-info;
   font-size: 15px;
   font-weight: bold;
+  pointer-events: auto;
+}
+
+// No button of its own until a pause level asks for one, so nothing here needs
+// the mouse — let a drag over the graphics through.
+.sinumerikMsgDiv--sticky {
+  pointer-events: none;
+
+  .sinumerikMsgContinue {
+    pointer-events: auto;
+  }
 }
 
 .sinumerikMsgHead {
-  float: left;
-  margin-right: 10px;
+  flex: none;
 }
 
+// Takes the rest of the row, and a long message wraps inside it instead of
+// pushing the close button out of the box.
 .sinumerikMsgBody {
-  float: left;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.sinumerikMsgClose {
-  float: right;
+.sinumerikMsgClose,
+.sinumerikMsgContinue {
+  flex: none;
+  margin-left: auto;
   font-size: 12px;
+}
+
+// Shown only while the run is held on this message.
+.sinumerikMsgContinue {
+  display: none;
+}
+
+.sinumerikMsgDiv--held .sinumerikMsgContinue {
+  display: inline-block;
 }
 
 // fanuc-options.js
