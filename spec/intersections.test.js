@@ -183,8 +183,81 @@ describe('findArcLineIntersection', () => {
         expect(result[0].yIntersection).toBeCloseTo(10)
     })
 
-    test('vertical line + arc → findArcVerticalLineIntersection used', () => {
+    // The three fillets below come from a real contour (a G18 one, with its Z
+    // and X read here as the mock's X and Y — the cancellation is a property of
+    // the numbers, not of the axis names). All three are tangent to the same
+    // line to within 1e-14 mm, which is as exact as doubles get, and two of
+    // them used to report nothing at all: the discriminant of the circle-line
+    // quadratic is a difference of two numbers of order 7e5 there, so at 1e-16
+    // relative error its sign said "no intersection". The third one worked only
+    // because its own difference happened to come out as a clean zero — which
+    // is why the tangency case above, on small round numbers, never caught it.
+    describe('tangency on real coordinates', () => {
+        const l = line(-1, -198, -369, 2)
+
+        test('R20 fillet tangent to the line → 1 point at its end', () => {
+            const a = arc(
+                -338.4381271934879, 9.217049569900775,
+                -330.88147662144604, -18.7165887926924,
+                -321.3312102130488, -1.1440986012414682,
+                20.000000000000004, true,
+            )
+            const result = findIntersection(a, l)
+            expect(result).toHaveLength(1)
+            expect(result[0].xIntersection).toBeCloseTo(-330.88147662144604, 6)
+            expect(result[0].yIntersection).toBeCloseTo(-18.7165887926924, 6)
+        })
+
+        test('R30 fillet tangent to the line → 1 point at its start', () => {
+            const a = arc(
+                -100.35155298709776, -144.00459076788164,
+                -60.518198973866035, -101.85521704221638,
+                -86.02615337450187, -117.64585548070528,
+                29.99999999999998, true,
+            )
+            const result = findIntersection(a, l)
+            expect(result).toHaveLength(1)
+            expect(result[0].xIntersection).toBeCloseTo(-100.35155298709776, 6)
+            expect(result[0].yIntersection).toBeCloseTo(-144.00459076788164, 6)
+        })
+
+        test('a point on an axis-parallel line keeps that line\'s own coordinate', () => {
+            // checkPointBelongsLine judges a point by the segment's bounding
+            // box, which for a line of constant X is one single value wide, so
+            // a last-bit difference there puts the point outside the line it
+            // was just computed on. With strict ends — a probe line of the
+            // turning generator — nothing saves it, and the crossing is lost
+            // silently. These are the numbers that did it: computing the point
+            // from the arc's centre gives -16.060000000000002.
+            const a = arc(
+                -8, 334, -44, 302,
+                -48.08510638297872, 342.84574468085106,
+                41.04951830038358, false,
+            );
+            const probe = line(-16.06, 295, -16.06, 374);
+            const result = findIntersection(a, probe, true);
+            expect(result).toHaveLength(1);
+            expect(result[0].xIntersection).toBe(-16.06);
+            expect(result[0].yIntersection).toBeCloseTo(317.16587875728317, 9);
+        });
+
+        test('R15 fillet, the one that used to work by luck', () => {
+            const a = arc(
+                -356.7111735335629, -20.952916302223016,
+                -336.7182859919356, -15.5444097869915,
+                -343.8809857982336, -28.723777430579624,
+                14.999999999999917, false,
+            )
+            const result = findIntersection(a, l)
+            expect(result).toHaveLength(1)
+            expect(result[0].xIntersection).toBeCloseTo(-336.7182859919356, 6)
+        })
+    })
+
+    test('vertical line + arc → 2 points, no case of its own', () => {
         // Vertical line x=0 through circle r=10 center (0,0) → intersects at (0,10) and (0,-10).
+        // Used to have a function to itself, because the general path divided
+        // by the line's slope; the distance-from-the-centre form does not.
         // Arc: from (0,10) to (0,-10), these are endpoints → accepted by getDistance check.
         const a = arc(0, 10, 0, -10, 0, 0, 10, false)
         const l = line(0, -15, 0, 15)
