@@ -168,13 +168,39 @@ describe('lineFilletCandidates: how many survive on the segments', () => {
     });
 
     it('says a radius is too small when the contacts fall inside the gap', () => {
+        // Perpendicular lines, so the tangent length is the radius itself and
+        // the admissible range is the 10..30 mm the segments cover.
         expect(lineFilletCandidates({ l1: gap1, l2: gap2, radius: 5 }))
-            .toEqual({ error: 'radius-too-small' });
+            .toEqual({ error: 'radius-too-small', fits: [[10, 30]] });
     });
 
     it('says a radius is too large when the contacts run past the far ends', () => {
         expect(lineFilletCandidates({ l1: gap1, l2: gap2, radius: 40 }))
-            .toEqual({ error: 'radius-too-large' });
+            .toEqual({ error: 'radius-too-large', fits: [[10, 30]] });
+    });
+
+    it('reports a range per sector when a corner has two of them', () => {
+        // The vertex lies inside the first segment, so both of its half-lines
+        // are offered, and the two sectors differ in angle — 30° and 150° —
+        // hence in how much radius one millimetre of tangent length buys. A
+        // radius between the two ranges fits neither.
+        const l1 = seg(-10, 0, 20, 0);
+        const along = d => [d * Math.cos(Math.PI / 6), d * Math.sin(Math.PI / 6)];
+        const l2 = { start: along(5), end: along(8) };
+
+        const { error, fits } = lineFilletCandidates({ l1, l2, radius: 10 });
+        expect(error).toBe('radius-does-not-fit');
+        expect(fits).toHaveLength(2);
+        // 5..8 mm of tangent length, in the acute sector and in the obtuse one.
+        expect(fits[0][0]).toBeCloseTo(5 * Math.tan(Math.PI / 12), 6);
+        expect(fits[0][1]).toBeCloseTo(8 * Math.tan(Math.PI / 12), 6);
+        expect(fits[1][0]).toBeCloseTo(5 * Math.tan(5 * Math.PI / 12), 6);
+        expect(fits[1][1]).toBeCloseTo(8 * Math.tan(5 * Math.PI / 12), 6);
+        // And a radius inside either one does fit.
+        expect(lineFilletCandidates({ l1, l2, radius: fits[0][1] * 0.99 }).candidates)
+            .toHaveLength(1);
+        expect(lineFilletCandidates({ l1, l2, radius: fits[1][0] * 1.01 }).candidates)
+            .toHaveLength(1);
     });
 
     it('leaves one fillet when the segments meet at their endpoints', () => {
@@ -221,6 +247,8 @@ describe('lineFilletCandidates: how many survive on the segments', () => {
         const far1 = seg(-30, 0, -10, 0);
         const at = d => [15 + d / Math.SQRT2, d / Math.SQRT2];
         const far2 = { start: at(60), end: at(80) };
+        // No `fits` at all here, unlike the gap between two sectors: there is
+        // nothing to suggest.
         expect(lineFilletCandidates({ l1: far1, l2: far2, radius: 12 }))
             .toEqual({ error: 'radius-does-not-fit' });
         expect(lineFilletCandidates({ l1: far1, l2: far2, radius: 30 }))
@@ -341,9 +369,9 @@ describe('lineChamferCandidates', () => {
         // The legs are the size itself here, so the window is the 10..30 mm the
         // segments cover.
         expect(lineChamferCandidates({ l1: gap1, l2: gap2, size: 5 }))
-            .toEqual({ error: 'size-too-small' });
+            .toEqual({ error: 'size-too-small', fits: [[10, 30]] });
         expect(lineChamferCandidates({ l1: gap1, l2: gap2, size: 40 }))
-            .toEqual({ error: 'size-too-large' });
+            .toEqual({ error: 'size-too-large', fits: [[10, 30]] });
     });
 
     it('refuses parallel lines, a degenerate line and a size that is not positive', () => {
