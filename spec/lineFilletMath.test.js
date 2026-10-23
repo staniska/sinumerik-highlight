@@ -386,3 +386,44 @@ describe('lineChamferCandidates', () => {
             .toEqual({ error: 'size-not-positive' });
     });
 });
+
+// The same geometry the manual fixture puts in front of the editor
+// (spec/fixtures/contourEdit/generate-contours.js), so the counts the README
+// promises are checked here rather than only by eye.
+describe('on the contourEdit fixtures', () => {
+    it('offers four corners where two lines cross (06_open_lines_diag_vertical)', () => {
+        const diagonal = seg(0, 0, 100, 100);
+        const vertical = seg(50, 0, 50, 100);
+        const { candidates } = lineFilletCandidates({ l1: diagonal, l2: vertical, radius: 10 });
+        expect(candidates).toHaveLength(4);
+        candidates.forEach(c => {
+            expect(onSegment(diagonal, c.t1)).toBe(true);
+            expect(onSegment(vertical, c.t2)).toBe(true);
+        });
+    });
+
+    it('offers one corner at a corner of the rectangle (01_closed_rect)', () => {
+        // The two sides meeting at (100, 0), each 100 and 60 long.
+        const bottom = seg(0, 0, 100, 0);
+        const right = seg(100, 0, 100, 60);
+        const { candidates } = lineFilletCandidates({ l1: bottom, l2: right, radius: 10 });
+        expect(candidates).toHaveLength(1);
+        expect(candidates[0].center.map(v => Math.round(v))).toEqual([90, 10]);
+
+        // A radius larger than the shorter side cannot stay on it, and the
+        // range offered is bounded by that side.
+        const refused = lineFilletCandidates({ l1: bottom, l2: right, radius: 120 });
+        expect(refused.error).toBe('radius-too-large');
+        expect(refused.fits).toEqual([[0, 60]]);
+    });
+
+    it('rounds the lathe rectangle in the Z-X plane (04_closed_lathe_rect_g18)', () => {
+        // Plane axes are just the two numbers of a pair here, so G18 is the
+        // same arithmetic — the fixture is included to say so.
+        const face = seg(0, 0, 0, 40);
+        const diameter = seg(0, 40, -80, 40);
+        const { candidates } = lineFilletCandidates({ l1: face, l2: diameter, radius: 5 });
+        expect(candidates).toHaveLength(1);
+        expect(candidates[0].center.map(v => Math.round(v))).toEqual([-5, 35]);
+    });
+});
