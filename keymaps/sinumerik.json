@@ -6,6 +6,8 @@
     "ctrl-alt-r": "sinumerik:redraw",
     "ctrl-alt-к": "sinumerik:redraw",
     "alt-space": "sinumerik:getSnippets",
-    "ctrl-alt-e": "sinumerik:contourEditTab"
+    "ctrl-alt-e": "sinumerik:contourEditTab",
+    "ctrl-alt-z": "sinumerik:contourEditUndo",
+    "ctrl-alt-я": "sinumerik:contourEditUndo"
   }
 }
