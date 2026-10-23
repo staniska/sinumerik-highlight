@@ -534,7 +534,8 @@
   position: relative;
 }
 
-.contourEditPrecision::before {
+.contourEditPrecision::before,
+.contourEditFillet::before {
   display: block;
   width: 90%;
   content: '';
@@ -542,6 +543,22 @@
   border-bottom: 1px solid @sin-border;
   top: 0;
   right: 5%;
+}
+
+/* The rnd/chr panel: same framing as Precision, which sits right below it. */
+.contourEditFillet {
+  margin-top: 5px;
+  padding: 5px 0;
+  position: relative;
+}
+
+.contourEditFilletMode {
+  display: inline-block;
+}
+
+.contourEditFilletValue {
+  width: 6em;
+  margin: 5px 3px;
 }
 
 .contourEditPrecision::after {
