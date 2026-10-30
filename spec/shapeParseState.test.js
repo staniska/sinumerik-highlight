@@ -38,6 +38,12 @@ function makeParseData() {
         frameDirty: false,
         auxAxes: ['A', 'C2'],
         auxPos: {A: 90, C2: 180},
+        // The program's own variable history, which a tool file must not touch.
+        variableLog: {'*': {R1: [{at: 0, value: 5}]}},
+        variablesSeen: {'*': {R1: 5}},
+        variablesDirty: new Set(['R1']),
+        variablesScanAll: false,
+        inShapeParse: false,
         axesPos: {X: 150, Y: 0, Z: -42},
         pole: {X: 1, Y: 2, Z: 3, AP: 4, RP: 5},
         prevMove: [{type: 'G1', RND: 2.5}],
