@@ -254,6 +254,86 @@ describe('subdivideElement', () => {
         });
     });
 
+    describe('the additional axes are divided too', () => {
+        test('a block that moves an axis divides it alongside X Y Z', () => {
+            const pieces = subdivideElement(move(0, -100, {A_start: 0, A: 90}), ['A']);
+
+            expect(pieces.length).toBeGreaterThan(1);
+            expect(pieces[0].A_start).toBeCloseTo(0);
+            expect(pieces[pieces.length - 1].A).toBeCloseTo(90);
+            pieces.forEach((p, i) => {
+                if (i) expect(p.A_start).toBeCloseTo(pieces[i - 1].A);
+            });
+        });
+
+        test('a block that does not move it repeats the one value', () => {
+            const pieces = subdivideElement(move(0, -100, {A_start: 90, A: 90}), ['A']);
+
+            pieces.forEach(p => {
+                expect(p.A_start).toBe(90);
+                expect(p.A).toBe(90);
+            });
+        });
+
+        // Nothing to divide from: the axis arrives at the end of the block, and
+        // until then the pieces say nothing about it — which is what the panel
+        // reads as "not programmed yet".
+        test('the block that names an axis first gives it only to the last piece', () => {
+            const pieces = subdivideElement(move(0, -100, {A: 90}), ['A']);
+
+            expect(pieces.length).toBeGreaterThan(1);
+            pieces.slice(0, -1).forEach(p => {
+                expect('A' in p).toBe(false);
+                expect('A_start' in p).toBe(false);
+            });
+
+            const lastPiece = pieces[pieces.length - 1];
+            expect(lastPiece.A_start).toBe(90);
+            expect(lastPiece.A).toBe(90);
+        });
+
+        test('an axis the block says nothing about is not invented', () => {
+            const pieces = subdivideElement(move(0, -100), ['A', 'W']);
+
+            pieces.forEach(p => {
+                expect('A' in p).toBe(false);
+                expect('W' in p).toBe(false);
+            });
+        });
+
+        test('several axes are divided independently', () => {
+            const pieces = subdivideElement(
+                move(0, -100, {A_start: 0, A: 90, W_start: 10, W: 20, C1: 45}),
+                ['A', 'W', 'C1']);
+
+            const mid = pieces[Math.floor(pieces.length / 2)];
+            expect(mid.A).toBeGreaterThan(0);
+            expect(mid.A).toBeLessThan(90);
+            expect(mid.W).toBeGreaterThan(10);
+            expect(mid.W).toBeLessThan(20);
+            expect('C1' in mid).toBe(false);
+
+            expect(pieces[pieces.length - 1].C1).toBe(45);
+        });
+
+        // A block short enough to stay whole keeps whatever it carries: the
+        // first-appearance rule has nothing to say when there is one piece, and
+        // that piece IS the last one.
+        test('a block too short to divide is passed through untouched', () => {
+            const el = move(0, 0.5, {A: 90});
+            expect(subdivideElement(el, ['A'])[0]).toBe(el);
+        });
+
+        test('without the list, the axes are left exactly as they were', () => {
+            const pieces = subdivideElement(move(0, -100, {A_start: 0, A: 90}));
+
+            pieces.forEach(p => {
+                expect(p.A_start).toBe(0);
+                expect(p.A).toBe(90);
+            });
+        });
+    });
+
     test('the modal state of the block reaches every piece', () => {
         const feed = {value: 120, type: 'G95'};
         const pieces = subdivideElement(move(0, -100, {feed, workPlane: 'G18', row: 7}));
@@ -268,6 +348,16 @@ describe('subdivideElement', () => {
 
 describe('buildAnimationPieces', () => {
     const move = (zs, z) => ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z});
+
+    test('the additional axes reach subdivideElement through it', () => {
+        const canvas = [{type: 'G1', X_start: 0, Y_start: 0, Z_start: 0,
+                         X: 0, Y: 0, Z: -100, A_start: 0, A: 90}];
+        const {elements} = buildAnimationPieces(canvas, ['A']);
+
+        expect(elements.length).toBeGreaterThan(1);
+        expect(elements[0].A).toBeLessThan(90);
+        expect(elements[elements.length - 1].A).toBeCloseTo(90);
+    });
 
     test('every piece says which program block it came from', () => {
         const canvas = [move(0, 100), move(100, 101), move(101, 300)];
