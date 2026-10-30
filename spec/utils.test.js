@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis, fillAuxAxes } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -523,5 +523,50 @@ describe('isLinearAxis / isFrameAxis', () => {
             expect(isLinearAxis(name)).toBe(false);
             expect(isFrameAxis(name)).toBe(false);
         });
+    });
+});
+
+describe('fillAuxAxes', () => {
+    test('an element with no block of its own gets both ends alike', () => {
+        const corner = {type: 'G1', X_start: 0, X: 5};
+        fillAuxAxes(corner, ['A'], {A: 90});
+
+        expect(corner.A).toBe(90);
+        expect(corner.A_start).toBe(90);
+    });
+
+    // An element born of a block carries its own pair, with a start that may
+    // differ from the end. Overwriting it would flatten the very interpolation
+    // the block is there to express.
+    test('an element that carries the axis already is left alone', () => {
+        const block = {type: 'G1', A_start: 0, A: 90};
+        fillAuxAxes(block, ['A'], {A: 180});
+
+        expect(block.A_start).toBe(0);
+        expect(block.A).toBe(90);
+    });
+
+    test('an axis not named anywhere yet leaves no key', () => {
+        const corner = {type: 'G1'};
+        fillAuxAxes(corner, ['A', 'W'], {A: 90});
+
+        expect(corner.A).toBe(90);
+        expect('W' in corner).toBe(false);
+        expect('W_start' in corner).toBe(false);
+    });
+
+    test('a zero is a value like any other', () => {
+        const corner = {type: 'G1'};
+        fillAuxAxes(corner, ['A'], {A: 0});
+
+        expect(corner.A).toBe(0);
+        expect(corner.A_start).toBe(0);
+    });
+
+    test('nothing to fill in is not an error', () => {
+        const corner = {type: 'G1'};
+        expect(() => fillAuxAxes(corner, [], {})).not.toThrow();
+        expect(() => fillAuxAxes(corner, undefined, undefined)).not.toThrow();
+        expect(Object.keys(corner)).toEqual(['type']);
     });
 });

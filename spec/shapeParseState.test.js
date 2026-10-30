@@ -37,6 +37,7 @@ function makeParseData() {
         frameId: 1,
         frameDirty: false,
         auxAxes: ['A', 'C2'],
+        auxPos: {A: 90, C2: 180},
         axesPos: {X: 150, Y: 0, Z: -42},
         pole: {X: 1, Y: 2, Z: 3, AP: 4, RP: 5},
         prevMove: [{type: 'G1', RND: 2.5}],

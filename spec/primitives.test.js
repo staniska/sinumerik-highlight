@@ -1016,6 +1016,103 @@ describe('feed operator wiring', () => {
     });
 });
 
+describe('the additional axes on the canvas element', () => {
+    const PROG = 'PROG';
+
+    // `generateCanvasPrimitives` takes operators, so the tokenizer that fills
+    // auxAxes is not in the picture here: the list is set directly, the way the
+    // parse would have left it by the time this block is reached.
+    const g1 = (x, extraOperators = []) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G1'},
+            {type: 'coordinate', name: 'X', value: String(x)},
+            ...extraOperators,
+        ]
+    });
+    const axis = (name, value) => ({type: 'coordinate', name, value: String(value)});
+    const last = () => View.sinumerikView.parseData.canvas[View.sinumerikView.parseData.canvas.length - 1];
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.rndm = 0;
+        View.sinumerikView.parseData.feed = {type: 'G95', value: 0.25};
+        View.sinumerikView.parseData.blockFeed = null;
+        View.sinumerikView.parseData.canvas = [];
+        View.sinumerikView.parseData.auxAxes = [];
+        View.sinumerikView.parseData.auxPos = {};
+    });
+
+    test('an axis never named leaves no key at all', () => {
+        generateCanvasPrimitives(g1(10), PROG, 0);
+
+        expect('A' in last()).toBe(false);
+        expect('A_start' in last()).toBe(false);
+    });
+
+    // The one block with an end and no start: there is nothing to have come
+    // from. Absence is what the panel reads as "not programmed yet", and the
+    // key has to be missing rather than NaN — a NaN would not survive the copy
+    // the animation makes of every piece.
+    test('the block that names an axis first has an end and no start', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+
+        expect(last().A).toBe(90);
+        expect('A_start' in last()).toBe(false);
+    });
+
+    test('a block that does not name it carries the value it already had', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+        generateCanvasPrimitives(g1(20), PROG, 1);
+
+        expect(last().A_start).toBe(90);
+        expect(last().A).toBe(90);
+    });
+
+    test('a block that moves it carries both ends', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+        generateCanvasPrimitives(g1(20, [axis('A', 180)]), PROG, 1);
+
+        expect(last().A_start).toBe(90);
+        expect(last().A).toBe(180);
+    });
+
+    test('several axes are kept apart', () => {
+        View.sinumerikView.parseData.auxAxes = ['A', 'W', 'C1'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90), axis('W', 5)]), PROG, 0);
+        generateCanvasPrimitives(g1(20, [axis('C1', 45)]), PROG, 1);
+
+        expect(last().A).toBe(90);
+        expect(last().W).toBe(5);
+        expect(last().C1).toBe(45);
+        expect('C1_start' in last()).toBe(false);
+    });
+
+    // The keys of a coordinate are read out of insertion order in a couple of
+    // places (`Object.keys(el).filter(whitelist).map(...)`), so the three that
+    // the geometry is built on must keep theirs.
+    test('X Y Z keep their order, and the new keys come after', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+
+        const keys = Object.keys(last());
+        expect(keys.filter(k => ['X_start', 'Y_start', 'Z_start'].includes(k)))
+            .toEqual(['X_start', 'Y_start', 'Z_start']);
+        expect(keys.filter(k => ['X', 'Y', 'Z'].includes(k))).toEqual(['X', 'Y', 'Z']);
+        expect(keys.indexOf('A')).toBeGreaterThan(keys.indexOf('Z'));
+    });
+
+    test('the running value is what the next block starts from', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+
+        expect(View.sinumerikView.parseData.auxPos).toEqual({A: 90});
+    });
+});
+
 describe('feed snapshot on the canvas element', () => {
     // `time.js` is the only reader of `element.feed`. The snapshot is taken when
     // the element is created, because an element carrying RND/CHR/CHF waits in
