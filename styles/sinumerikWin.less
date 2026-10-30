@@ -1363,6 +1363,43 @@
   --slow-mid: ~"@{slow-active-mid}";
 }
 
+// single-line-debug.js: shown over the slow-debug button while the press is
+// being answered. The rotation is a CSS animation on purpose — it is composited,
+// so it keeps turning through the synchronous work it is there to cover, which
+// no JS-driven indicator could do.
+.sinumerikSLDSlowDiv {
+  position: relative;
+}
+
+.sinumerikSLDSlowSpinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border: 2px solid fade(@sin-text-success, 25%);
+  border-top-color: @sin-text-success;
+  border-radius: 50%;
+  // The button underneath stays the click target.
+  pointer-events: none;
+  // Fading in on a delay is what keeps a short wait from showing as a blink:
+  // work that finishes inside the delay is never announced. The delay is held
+  // by the compositor too, so it is still honoured while the main thread is
+  // blocked — a `setTimeout` could not run there at all.
+  opacity: 0;
+  animation: sinumerikSLDSpin 0.7s linear infinite,
+             sinumerikSLDSpinnerIn 0.1s linear 0.15s forwards;
+}
+
+@keyframes sinumerikSLDSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sinumerikSLDSpinnerIn {
+  to { opacity: 1; }
+}
+
 // single-line-debug.js: G40/G41/G42 legend
 .sinumerikSLDHelpDiv {
   display: flex;

@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -423,5 +423,37 @@ describe('stickyMsgAt', () => {
 
     test('a message with no value at all reads as empty', () => {
         expect(stickyMsgAt([{type: 'msg'}], 1)).toBe('');
+    });
+});
+
+describe('wheelIsMouse', () => {
+    const wheel = (deltaY, deltaMode = 0) => ({deltaY, deltaMode});
+
+    test('a whole detent is a mouse, either direction', () => {
+        expect(wheelIsMouse(wheel(120))).toBe(true);
+        expect(wheelIsMouse(wheel(-120))).toBe(true);
+        expect(wheelIsMouse(wheel(100))).toBe(true);
+        expect(wheelIsMouse(wheel(-300))).toBe(true);
+    });
+
+    test('lines or pages come from nothing but a wheel', () => {
+        expect(wheelIsMouse(wheel(3, 1))).toBe(true);
+        expect(wheelIsMouse(wheel(1, 2))).toBe(true);
+    });
+
+    test('the small, arbitrary deltas of a swipe are a trackpad', () => {
+        [4, -12.5, 37, 99.9, -64].forEach(d => expect(wheelIsMouse(wheel(d))).toBe(false));
+    });
+
+    test('a long swipe is still a trackpad while it is not a whole detent', () => {
+        expect(wheelIsMouse(wheel(143))).toBe(false);
+        expect(wheelIsMouse(wheel(-250.5))).toBe(false);
+    });
+
+    // The one case the numbers cannot separate: a swipe that happens to land on
+    // a detent reads as a mouse. It costs one step too many, which is the side
+    // the doubt is deliberately resolved to.
+    test('a swipe landing exactly on a detent is taken for a mouse', () => {
+        expect(wheelIsMouse(wheel(120))).toBe(true);
     });
 });
