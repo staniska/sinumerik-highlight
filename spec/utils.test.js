@@ -220,6 +220,52 @@ describe('extractBoundingContourBlock', () => {
     });
 });
 
+describe('subdivideElement', () => {
+    const move = (zs, z, extra = {}) =>
+        ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z, ...extra});
+
+    test('a block shorter than the step is passed through whole', () => {
+        const el = move(0, 0.5);
+        expect(subdivideElement(el)).toEqual([el]);
+        expect(subdivideElement(el)[0]).toBe(el);
+    });
+
+    test('the pieces cover the block end to end, in order', () => {
+        const pieces = subdivideElement(move(0, -100));
+        expect(pieces.length).toBeGreaterThan(1);
+        expect(pieces[0].Z_start).toBeCloseTo(0);
+        expect(pieces[pieces.length - 1].Z).toBeCloseTo(-100);
+        pieces.forEach((p, i) => {
+            if (i) expect(p.Z_start).toBeCloseTo(pieces[i - 1].Z);
+        });
+    });
+
+    // The copy must not be lossy. A deep copy through JSON turns NaN into null,
+    // which `Number.isNaN` does not catch and arithmetic reads as zero — and
+    // "never programmed" is exactly what the extra axes A/B/C/U/V/W will carry
+    // on a block before their first appearance.
+    test('a value that is not a number survives the copy as itself', () => {
+        const pieces = subdivideElement(move(0, -100, {A_start: NaN, A: 90}));
+
+        expect(pieces.length).toBeGreaterThan(1);
+        pieces.forEach(p => {
+            expect(Number.isNaN(p.A_start)).toBe(true);
+            expect(p.A).toBe(90);
+        });
+    });
+
+    test('the modal state of the block reaches every piece', () => {
+        const feed = {value: 120, type: 'G95'};
+        const pieces = subdivideElement(move(0, -100, {feed, workPlane: 'G18', row: 7}));
+
+        pieces.forEach(p => {
+            expect(p.feed.value).toBe(120);
+            expect(p.workPlane).toBe('G18');
+            expect(p.row).toBe(7);
+        });
+    });
+});
+
 describe('buildAnimationPieces', () => {
     const move = (zs, z) => ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z});
 
