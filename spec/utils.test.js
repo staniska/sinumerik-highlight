@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -501,5 +501,27 @@ describe('wheelIsMouse', () => {
     // the doubt is deliberately resolved to.
     test('a swipe landing exactly on a detent is taken for a mouse', () => {
         expect(wheelIsMouse(wheel(120))).toBe(true);
+    });
+});
+
+describe('isLinearAxis / isFrameAxis', () => {
+    test('a length takes the unit, an angle does not', () => {
+        ['X', 'Y', 'Z', 'U', 'V', 'W'].forEach(ax => expect(isLinearAxis(ax)).toBe(true));
+        ['A', 'B', 'C'].forEach(ax => expect(isLinearAxis(ax)).toBe(false));
+    });
+
+    // A frame is built on three axes. The additional ones are read and shown
+    // and nothing more, and `frame.mirror` holds no entry for them.
+    test('a frame is built on X Y Z alone', () => {
+        ['X', 'Y', 'Z'].forEach(ax => expect(isFrameAxis(ax)).toBe(true));
+        ['A', 'B', 'C', 'U', 'V', 'W'].forEach(ax => expect(isFrameAxis(ax)).toBe(false));
+    });
+
+    // The machine names its spindle axis, and it can be anything.
+    test('a multi-letter axis name is neither', () => {
+        ['C2', 'SP1', ''].forEach(name => {
+            expect(isLinearAxis(name)).toBe(false);
+            expect(isFrameAxis(name)).toBe(false);
+        });
     });
 });
