@@ -31,6 +31,11 @@ function makeParseData() {
             basis:       [[0, 1, 0], [1, 0, 0], [0, 0, 1]],
             invertBasis: [[0, 1, 0], [1, 0, 0], [0, 0, 1]],
         },
+        // The display table the program's elements are already stamped against.
+        frames: [{trans: {X: 0, Y: 0, Z: 0}, diamon: 1, unitMult: 1},
+                 {trans: {X: 11, Y: 22, Z: 33}, diamon: 1, unitMult: 25.4}],
+        frameId: 1,
+        frameDirty: false,
         axesPos: {X: 150, Y: 0, Z: -42},
         pole: {X: 1, Y: 2, Z: 3, AP: 4, RP: 5},
         prevMove: [{type: 'G1', RND: 2.5}],
