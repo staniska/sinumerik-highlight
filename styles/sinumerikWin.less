@@ -1400,6 +1400,19 @@
   to { opacity: 1; }
 }
 
+// sldDockPanel.js: the slow-debug tab in Pulsar's left dock. The dock paints its
+// own background, so only the padding and the text colour are ours.
+.sinumerikSldDock {
+  height: 100%;
+  padding: 10px;
+  overflow: auto;
+  color: @sin-text;
+}
+
+.sinumerikSldDockPlaceholder {
+  color: @sin-text-subtle;
+}
+
 // single-line-debug.js: G40/G41/G42 legend
 .sinumerikSLDHelpDiv {
   display: flex;
