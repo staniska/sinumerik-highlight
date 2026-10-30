@@ -1413,6 +1413,33 @@
   color: @sin-text-subtle;
 }
 
+.sinumerikSldDockHeader {
+  display: flex;
+  justify-content: space-between;
+  color: @sin-text-subtle;
+  border-bottom: 1px solid @sin-border;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+// Monospace, and the value right-aligned in a fixed column: a readout that
+// moves sideways as digits come and go cannot be read while it changes.
+.sinumerikSldDockAxis {
+  display: flex;
+  justify-content: space-between;
+  font-family: monospace;
+  line-height: 1.6;
+}
+
+.sinumerikSldDockAxisName {
+  color: @sin-text-subtle;
+  padding-right: 10px;
+}
+
+.sinumerikSldDockAxisValue {
+  font-variant-numeric: tabular-nums;
+}
+
 // single-line-debug.js: G40/G41/G42 legend
 .sinumerikSLDHelpDiv {
   display: flex;
