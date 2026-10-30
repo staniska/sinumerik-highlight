@@ -1067,6 +1067,18 @@
   box-shadow: 0 0 4px 3px @text-color-info;
 }
 
+// single-line-debug.js: hold / resume, to the left of the slow-debug progress
+// bar. Square, so the icon sits in the middle of it and the bar keeps the rest
+// of the row.
+.sinumerikSLDPlayButton {
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  margin: 0 0 0 5px;
+  padding: 0;
+  align-self: center;
+}
+
 // sinumerik-view.js
 .sinumerikButton--savePanelWidth {
   margin-left: auto;
@@ -1308,7 +1320,8 @@
   margin: auto;
 }
 
-.sinumerikSLDPauseDiv {
+.sinumerikSLDPauseDiv,
+.sinumerikSLDSlowDiv {
   height: 37px;
 }
 
@@ -1319,6 +1332,35 @@
   --pause-on:  fade(@text-color-success, 80%);
   --pause-mid: fade(@text-color-success, 35%);
   --pause-off: @sin-highlight-bg;
+}
+
+// single-line-debug.js: the slow-debug button, two states and a speed in one
+// control. Grey while idle, green while running, filled left to right up to the
+// speed the wheel has picked. The gradient itself is assembled in JS
+// (changeSlowDebugBackground) out of these three variables, so the palette
+// stays here and switching states only re-declares it.
+//
+// The values go through escaped interpolation, as --tool-preview-* do: Less
+// hands a custom property's value on as text, so `fade(...)` written straight
+// into one can reach the browser unevaluated. Computing the colour into an
+// ordinary Less variable first works either way.
+@slow-idle-on:    fade(@sin-text-subtle, 80%);
+@slow-idle-mid:   fade(@sin-text-subtle, 35%);
+@slow-active-on:  fade(@sin-text-success, 80%);
+@slow-active-mid: fade(@sin-text-success, 35%);
+
+.sinumerikSLDSlowButton {
+  width: 90%;
+  margin-left: 5%;
+  --slow-on:  ~"@{slow-idle-on}";
+  --slow-mid: ~"@{slow-idle-mid}";
+  --slow-off: ~"@{sin-highlight-bg}";
+}
+
+.sinumerikSLDSlowButton--active {
+  border-color: @sin-text-success;
+  --slow-on:  ~"@{slow-active-on}";
+  --slow-mid: ~"@{slow-active-mid}";
 }
 
 // single-line-debug.js: G40/G41/G42 legend
