@@ -4,6 +4,8 @@ const {
     normalizeIpsReference,
     ipsIsTransformed,
     describeIpsTransform,
+    ipsStatusText,
+    uniqueProgramNames,
 } = require('../lib/ipsReference');
 
 describe('blankMode', () => {
@@ -109,5 +111,62 @@ describe('describeIpsTransform', () => {
 
     test('a positive shift carries its sign', () => {
         expect(describeIpsTransform({name: 'OP10', trans: {Z: 12.5}})).toBe('Z+12.5');
+    });
+});
+
+describe('ipsStatusText', () => {
+    const ref = {name: 'OP10'};
+
+    test('every refusal names the program and says what to do', () => {
+        [
+            'notFound', 'cycle', 'tooDeep', 'noMachine', 'readError', 'noBlank',
+            'noTools', 'toolsNotReady', 'nothingLeft', 'manyPieces', 'noProgram',
+            'chainBroken', 'failed', 'notComputed',
+        ].forEach(status => {
+            const text = ipsStatusText(status, ref);
+            expect(text).toContain('OP10');
+            expect(text.length).toBeGreaterThan(20);
+        });
+    });
+
+    test('the two that are not about a named program do not pretend to be', () => {
+        expect(ipsStatusText('noName', ref)).not.toContain('OP10');
+        expect(ipsStatusText('notLathe', ref)).not.toContain('OP10');
+    });
+
+    test('an unknown status still says something, with the code in it', () => {
+        expect(ipsStatusText('weird', ref)).toContain('weird');
+        expect(ipsStatusText('weird', ref)).toContain('OP10');
+    });
+
+    test('a nameless reference does not print "undefined"', () => {
+        expect(ipsStatusText('notFound', null)).not.toContain('undefined');
+    });
+});
+
+describe('uniqueProgramNames', () => {
+    const entries = (...names) => names.map(name => ({name, path: `/p/${name}.MPF`}));
+
+    test('sorted, without duplicates', () => {
+        // The same name can sit in the program's folder and in a machine
+        // subroutine folder; the field takes a name, so it is offered once.
+        expect(uniqueProgramNames(entries('OP20', 'BLANK', 'OP20', 'CONTOUR')))
+            .toEqual(['BLANK', 'CONTOUR', 'OP20']);
+    });
+
+    test('the program itself is never offered', () => {
+        // It cannot be its own blank, contour or stock source.
+        expect(uniqueProgramNames(entries('OP10', 'OP20', 'BLANK'), 'OP20'))
+            .toEqual(['BLANK', 'OP10']);
+    });
+
+    test('the exclusion is case-insensitive', () => {
+        expect(uniqueProgramNames(entries('OP20', 'BLANK'), 'op20')).toEqual(['BLANK']);
+    });
+
+    test('nothing to offer is an empty list, not a throw', () => {
+        expect(uniqueProgramNames([])).toEqual([]);
+        expect(uniqueProgramNames(undefined)).toEqual([]);
+        expect(uniqueProgramNames([null, {}, {name: ''}])).toEqual([]);
     });
 });

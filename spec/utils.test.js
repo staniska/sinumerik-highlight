@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis, fillAuxAxes } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis, fillAuxAxes, extractFlaggedShape } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -658,5 +658,82 @@ describe('fillAuxAxes', () => {
         expect(() => fillAuxAxes(corner, [], {})).not.toThrow();
         expect(() => fillAuxAxes(corner, undefined, undefined)).not.toThrow();
         expect(Object.keys(corner)).toEqual(['type']);
+    });
+});
+
+// --- extractFlaggedShape ---
+//
+// The blank and the contour are parsed into the canvas ahead of the program and
+// taken back out here. Shared with the IPS pre-pass, which does the same to a
+// program it only measures — so the rule is worth pinning on its own.
+
+describe('extractFlaggedShape', () => {
+    const seg = (fromZ, toZ, flag) => ({
+        type: 'G1',
+        X_start: 10, Y_start: 0, Z_start: fromZ,
+        X: 10, Y: 0, Z: toZ,
+        ...(flag ? {[flag]: true} : {}),
+    });
+
+    it('returns nothing when the canvas does not start with the flag', () => {
+        const canvas = [seg(0, 10)];
+        expect(extractFlaggedShape(canvas, 'blank')).toEqual([]);
+        expect(canvas.length).toBe(1);
+    });
+
+    it('tolerates an empty canvas', () => {
+        expect(extractFlaggedShape([], 'blank')).toEqual([]);
+        expect(extractFlaggedShape(undefined, 'blank')).toEqual([]);
+    });
+
+    it('takes the flagged run off the front and leaves the rest', () => {
+        const canvas = [seg(0, 10, 'blank'), seg(10, 20, 'blank'), seg(20, 30, 'blank'), seg(0, 5)];
+        const shape = extractFlaggedShape(canvas, 'blank');
+        expect(canvas.length).toBe(1);
+        expect(canvas[0].blank).toBeUndefined();
+        expect(shape.length).toBe(3);
+    });
+
+    it('drops the approach move and closes the ring with a connector', () => {
+        // element[0] is the G0 that positioned on the start point; the last
+        // element is a connector from the final end back to the first edge's
+        // start, so the result is a closed polygon.
+        const canvas = [
+            {type: 'G0', X_start: 0, Y_start: 0, Z_start: 0, X: 10, Y: 0, Z: 0, blank: true},
+            seg(0, 20, 'blank'),
+            seg(20, 40, 'blank'),
+        ];
+        const shape = extractFlaggedShape(canvas, 'blank');
+        // Two real edges plus the connector that closes them.
+        expect(shape.length).toBe(3);
+        expect(shape[0].Z_start).toBe(0);
+        expect(shape[0].Z).toBe(20);
+        const connector = shape[shape.length - 1];
+        expect(connector.Z_start).toBe(40);
+        expect(connector.Z).toBe(0);
+    });
+
+    it('a single flagged element is returned as it is', () => {
+        const canvas = [seg(0, 10, 'blank')];
+        expect(extractFlaggedShape(canvas, 'blank').length).toBe(1);
+    });
+
+    it('non-geometry elements of the run are dropped', () => {
+        const canvas = [
+            {type: 'G0', X_start: 0, Y_start: 0, Z_start: 0, X: 0, Y: 0, Z: 0, blank: true},
+            {type: 'msg', blank: true},
+            seg(0, 20, 'blank'),
+            seg(20, 40, 'blank'),
+        ];
+        const shape = extractFlaggedShape(canvas, 'blank');
+        expect(shape.every(el => el.type.match(/G[0-3]/))).toBe(true);
+        // The two edges and their connector; the G0 and the msg are gone.
+        expect(shape.length).toBe(3);
+    });
+
+    it('works the same for the contour flag', () => {
+        const canvas = [seg(0, 10, 'contour'), seg(10, 20, 'contour'), seg(0, 5)];
+        expect(extractFlaggedShape(canvas, 'contour').length).toBe(2);
+        expect(canvas.length).toBe(1);
     });
 });

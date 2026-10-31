@@ -1528,6 +1528,32 @@
   align-items: center;
 }
 
+// nameSuggest.js: the suggestion list behind the Blank / IPS / Contour fields.
+// Mounted on `body` with fixed coordinates — the panel footer is a flex box and
+// would clip a list positioned inside the row.
+.sinumerikNameSuggest {
+  position: fixed;
+  z-index: 500;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  max-height: 14em;
+  overflow-y: auto;
+  background-color: @sin-overlay-bg;
+  border: 1px solid @sin-border;
+}
+
+.sinumerikNameSuggestItem {
+  padding: 1px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sinumerikNameSuggestItem--selected {
+  background-color: @sin-btn-selected;
+  color: @sin-text-selected;
+}
+
 // single-line-debug.js: the Blank ⇄ IPS switch. A real button — it is the
 // row's control, not only its label — so it carries `sinumerikButton` and all
 // it needs here is a width that does not change with the label, or the whole
