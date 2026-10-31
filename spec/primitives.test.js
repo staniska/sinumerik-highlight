@@ -261,6 +261,40 @@ describe('generatePrimitives', () => {
 // mock that evaluates plain numeric literals, since these fields don't use
 // checkCoordinates' own regex parsing.
 
+describe('SUPA and G53', () => {
+    const parseRowsFn = jest.fn();
+    const PROG = 'PROG';
+    const prog = (row) => [row];
+
+    // Neither is acted on. Claiming the word is the whole point: an unknown one
+    // falls through every parser and comes back as `Not one parser worked`,
+    // which stops the trajectory on an otherwise ordinary block.
+    test('both are claimed, and neither is an error', async () => {
+        for (const word of ['SUPA', 'G53']) {
+            View.sinumerikView.parseData.errors = [];
+            const result = await generatePrimitives(word, PROG, 0, prog(word), parseRowsFn);
+
+            expect(result.operators[0].type).toBe('supa');
+            expect(View.sinumerikView.parseData.errors).toEqual([]);
+        }
+    });
+
+    test('in a block with a move, the move still parses', async () => {
+        View.sinumerikView.parseData.errors = [];
+        const result = await generatePrimitives('G53 X10', PROG, 0, prog('G0 G53 X10'), parseRowsFn);
+
+        expect(result.operators[0].type).toBe('supa');
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    // The word is whole: a longer one starting with it is not G53.
+    test('G530 is not claimed by it', async () => {
+        const result = await generatePrimitives('G530', PROG, 0, prog('G530'), parseRowsFn);
+
+        expect(result.operators[0].type).not.toBe('supa');
+    });
+});
+
 describe('the additional axes A B C U V W', () => {
     const parseRowsFn = jest.fn();
     const PROG = 'PROG';

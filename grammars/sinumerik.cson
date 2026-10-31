@@ -72,7 +72,7 @@
             "name": "sinumerik_g_func"
           }
           {
-            "match": "(?<=[\\s]|^)[MP]?CALL|EXTCALL|SUPA"
+            "match": "(?<=[\\s]|^)[MP]?CALL|EXTCALL|SUPA|G53(?!\\w)"
             "name": "sinumerik_g_func"
           }
         ]
