@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: { programmData: {} } }
 }));
 
-const { parseAutoComment, loadDataFromComment, commentPayload } = require('../lib/inner-comment');
+const { parseAutoComment, loadDataFromComment, commentPayload, declaredFields } = require('../lib/inner-comment');
 const View = require('../lib/sinumerik').default;
 
 describe('parseAutoComment', () => {
@@ -101,6 +101,27 @@ describe('parseAutoComment', () => {
         expect(result.contour).toEqual({ name: 'CONTOUR_B' });
     });
 
+    test('an ips reference comes through', () => {
+        // It used to be dropped: the parser copied three named fields, so a
+        // program borrowing a previous one's stock came back looking as though
+        // it had no reference at all.
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"ips":{"name":"OP10","trans":{"Z":-120},"mirror":["Z"]}}',
+            END,
+        ].join('\n');
+        expect(parseAutoComment(text).ips)
+            .toEqual({ name: 'OP10', trans: { Z: -120 }, mirror: ['Z'] });
+    });
+
+    test('a field this package does not know is kept, not dropped', () => {
+        // `declaredFields` reads these keys, and a save carries an unknown one
+        // through rather than deleting what it does not understand.
+        const text = ['N1 G0 X0', BEGIN, ';{"somethingNew":{"a":1}}', END].join('\n');
+        expect(parseAutoComment(text).somethingNew).toEqual({ a: 1 });
+    });
+
     test('logs and continues when one JSON chunk is broken', () => {
         const text = [
             'N1 G0 X0',
@@ -161,6 +182,25 @@ describe('loadDataFromComment units back-compat', () => {
         loadDataFromComment();
 
         expect(View.sinumerikView.programmData['/test/old.mpf'].machine.units).toBe('metric');
+    });
+
+    test('an ips reference is loaded and takes the blank default with it', () => {
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"ips":{"name":"OP10"}}',
+            END,
+        ].join('\n');
+        setEditor('/test/op20.mpf', text);
+
+        loadDataFromComment();
+
+        const data = View.sinumerikView.programmData['/test/op20.mpf'];
+        expect(data.ips).toEqual({ name: 'OP10' });
+        // Mutually exclusive from the moment the file is read: a program that
+        // borrows a previous one's stock has no blank of its own.
+        expect(data.blank).toBeUndefined();
+        expect(data.contour).toEqual({ name: 'CONTOUR' });
     });
 
     test('machine with an explicit units field is left untouched', () => {
@@ -249,68 +289,91 @@ describe('commentPayload', () => {
 });
 
 
-// --- loadDataFromComment records what the text declared ---
+// --- declaredFields: the text is the source of truth ---
+//
+// An in-memory record of this went stale the moment the comment was edited by
+// hand: deleting the whole comment and then saving the blank put the contour
+// back, because memory still remembered it.
 
-describe('loadDataFromComment declaredFields', () => {
+describe('declaredFields', () => {
     const BEGIN = ';This comment is automatically created by sinumerik-highlight package';
     const END = ';End of comment created by sinumerik-highlight package';
-
-    const setEditor = (path, text) => {
-        global.atom = {
-            workspace: {
-                getActiveTextEditor: () => ({
-                    getPath: () => path,
-                    getText: () => text,
-                }),
-            },
-        };
-    };
-
-    beforeEach(() => {
-        View.sinumerikView.programmData = {};
-        View.sinumerikView.declaredFields = {};
-    });
+    const wrap = (...lines) => ['N1 G0 X0', BEGIN, ...lines, END].join('\n');
 
     test('a file that names only its machine declares only machine', () => {
-        const text = [
-            'N1 G0 X0',
-            BEGIN,
-            ';{"machine":{"machineName":"M1","machineType":"Lathe"}}',
-            END,
-        ].join('\n');
-        setEditor('/test/one.mpf', text);
-
-        loadDataFromComment();
-
-        expect(Array.from(View.sinumerikView.declaredFields['/test/one.mpf'])).toEqual(['machine']);
-        // The defaults are still in memory — they are simply not declared.
-        expect(View.sinumerikView.programmData['/test/one.mpf'].blank).toEqual({ name: 'BLANK' });
-        expect(commentPayload(
-            View.sinumerikView.programmData['/test/one.mpf'],
-            View.sinumerikView.declaredFields['/test/one.mpf'],
-        ).blank).toBeUndefined();
+        expect(Array.from(declaredFields(wrap(';{"machine":{"machineName":"M1"}}'))))
+            .toEqual(['machine']);
     });
 
     test('a file with no auto-comment declares nothing', () => {
-        setEditor('/test/bare.mpf', 'N1 G0 X0\nM30');
-
-        loadDataFromComment();
-
-        expect(Array.from(View.sinumerikView.declaredFields['/test/bare.mpf'])).toEqual([]);
+        expect(Array.from(declaredFields('N1 G0 X0\nM30'))).toEqual([]);
+        expect(Array.from(declaredFields(''))).toEqual([]);
     });
 
     test('an old file with all three keys declares all three', () => {
-        const text = [
-            'N1 G0 X0',
-            BEGIN,
-            ';{"machine":{"machineName":"M1"},"blank":{"name":"ZAGOT"},"contour":{"name":"DETAL"}}',
-            END,
-        ].join('\n');
-        setEditor('/test/old.mpf', text);
+        const text = wrap(';{"machine":{"machineName":"M1"},"blank":{"name":"ZAGOT"},"contour":{"name":"DETAL"}}');
+        expect(Array.from(declaredFields(text)).sort()).toEqual(['blank', 'contour', 'machine']);
+    });
 
-        loadDataFromComment();
+    test('a deleted comment declares nothing, whatever was saved before', () => {
+        expect(Array.from(declaredFields(wrap(';{"contour":{"name":"DETAL"}}')))).toEqual(['contour']);
+        expect(Array.from(declaredFields('N1 G0 X0'))).toEqual([]);
+    });
+});
 
-        expect(Array.from(View.sinumerikView.declaredFields['/test/old.mpf']).sort())
-            .toEqual(['blank', 'contour', 'machine']);
+
+describe('commentPayload base and saving', () => {
+    test('a field only the file knows about is carried through', () => {
+        // Memory never read this file's machine; saving the contour must not
+        // drop it.
+        const payload = commentPayload(
+            { contour: { name: 'DETAL' } },
+            new Set(['machine', 'contour']),
+            { base: { machine: { machineName: 'M1' } }, saving: ['contour'] },
+        );
+        expect(payload).toEqual({ machine: { machineName: 'M1' }, contour: { name: 'DETAL' } });
+    });
+
+    test('memory wins over the file for a field both know', () => {
+        const payload = commentPayload(
+            { contour: { name: 'NEW' } },
+            new Set(['contour']),
+            { base: { contour: { name: 'OLD' } }, saving: ['contour'] },
+        );
+        expect(payload.contour).toEqual({ name: 'NEW' });
+    });
+
+    test('saving the blank row drops the ips the file had', () => {
+        const payload = commentPayload(
+            { blank: { name: 'ZAGOT' } },
+            new Set(['ips', 'blank']),
+            { base: { ips: { name: 'OP10' } }, saving: ['blank'] },
+        );
+        expect(payload).toEqual({ blank: { name: 'ZAGOT' } });
+    });
+
+    test('saving the ips row drops the blank the file had', () => {
+        const payload = commentPayload(
+            { ips: { name: 'OP10' } },
+            new Set(['blank', 'ips']),
+            { base: { blank: { name: 'ZAGOT' } }, saving: ['ips'] },
+        );
+        expect(payload).toEqual({ ips: { name: 'OP10' } });
+    });
+
+    test('saving the contour leaves the blank row alone, both ways', () => {
+        // Saving one thing at a time is the whole point: a contour press has no
+        // business resolving a pair it was not asked about.
+        const withIps = commentPayload(
+            { contour: { name: 'DETAL' }, blank: { name: 'BLANK' } },
+            new Set(['ips', 'contour']),
+            { base: { ips: { name: 'OP10' } }, saving: ['contour'] },
+        );
+        expect(withIps).toEqual({ ips: { name: 'OP10' }, contour: { name: 'DETAL' } });
+    });
+
+    test('with no base it is the plain declared filter', () => {
+        const data = { machine: { machineName: 'M1' }, blank: { name: 'BLANK' } };
+        expect(commentPayload(data, new Set(['machine']))).toEqual({ machine: { machineName: 'M1' } });
     });
 });

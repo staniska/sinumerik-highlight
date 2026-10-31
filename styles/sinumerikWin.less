@@ -210,10 +210,15 @@
 // Native <input>/<select> elements have no theme-aware defaults — explicitly
 // set theme-driven colors. Excludes checkbox/radio (browser handles their
 // shape natively; setting background-color/border would destroy the glyph).
+// A modal panel is not inside `.sinumerikPanel` — it is mounted on the
+// workspace — so the shared rule has to name it, or an input in a popup of ours
+// falls back to whatever the theme does with a bare `input`.
 .sinumerikPanel input:not([type="checkbox"]):not([type="radio"]),
 .sinumerikPanel select,
 .sinumerikSnippetsMenu input:not([type="checkbox"]):not([type="radio"]),
-.sinumerikSnippetsMenu select {
+.sinumerikSnippetsMenu select,
+.contourEdit_modalWindow input:not([type="checkbox"]):not([type="radio"]),
+.contourEdit_modalWindow select {
   background-color: @sin-input-bg;
   color: @sin-text;
   border: 1px solid @sin-border;
@@ -223,7 +228,8 @@
 // checkbox/radio backgrounds render in the matching dark/light style.
 // Resolved at LESS compile time; Pulsar recompiles styles on theme change.
 .sinumerikPanel,
-.sinumerikSnippetsMenu {
+.sinumerikSnippetsMenu,
+.contourEdit_modalWindow {
   & when (lightness(@base-background-color) < 50%) { color-scheme: dark; }
   & when (lightness(@base-background-color) >= 50%) { color-scheme: light; }
 }
@@ -1520,6 +1526,36 @@
 .sinumerikSLDRowFlex {
   display: flex;
   align-items: center;
+}
+
+// single-line-debug.js: the Blank ⇄ IPS switch. A real button — it is the
+// row's control, not only its label — so it carries `sinumerikButton` and all
+// it needs here is a width that does not change with the label, or the whole
+// row would shift when the mode is switched.
+.sinumerikSLDModeToggle {
+  min-width: 5em;
+}
+
+// Borrowing another program's stock is not the ordinary case, and the row is
+// read at a glance while debugging.
+.sinumerikSLDModeToggle--ips {
+  color: @sin-text-info;
+  font-weight: bold;
+}
+
+// single-line-debug.js: the offset/mirror popup of an IPS reference.
+.sinumerikIpsTransformRow {
+  margin: 3px;
+  justify-content: flex-end;
+}
+
+.sinumerikIpsTransformInput {
+  width: 7em;
+}
+
+.sinumerikIpsMirrorButton {
+  margin-left: 5px;
+  width: 2.5em;
 }
 
 .sinumerikSLDCenteredCheckbox {
