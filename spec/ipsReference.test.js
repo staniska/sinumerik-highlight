@@ -8,6 +8,8 @@ const {
     uniqueProgramNames,
     placeStockElements,
     ipsUnitMult,
+    pieceSignature,
+    matchPiece,
 } = require('../lib/ipsReference');
 
 describe('blankMode', () => {
@@ -261,5 +263,66 @@ describe('ipsUnitMult', () => {
         expect(ipsUnitMult({units: 'metric'})).toBe(1);
         expect(ipsUnitMult({})).toBe(1);
         expect(ipsUnitMult(undefined)).toBe(1);
+    });
+});
+
+
+// Which piece of a stock that came apart. Recorded as a shape, never as a
+// position in a list: add a groove to the source and the list renumbers, while
+// the flange is still the flange.
+describe('pieceSignature and matchPiece', () => {
+    const piece = (a0min, a0max, a1max) => ({bounds: {a0min, a0max, a1min: 0, a1max}});
+    const flange = piece(-2, 18, 60);
+    const slug = piece(20, 140, 25);
+
+    test('the signature is the three numbers the chooser shows', () => {
+        expect(pieceSignature(flange)).toEqual({a0min: -2, a0max: 18, a1max: 60});
+    });
+
+    test('the signature is rounded, so it survives a round trip through JSON', () => {
+        expect(pieceSignature(piece(-2.00000000001, 18, 60)).a0min).toBe(-2);
+    });
+
+    test('a recorded piece is found again among the same two', () => {
+        expect(matchPiece([flange, slug], pieceSignature(slug))).toEqual({index: 1});
+        expect(matchPiece([flange, slug], pieceSignature(flange))).toEqual({index: 0});
+    });
+
+    test('a small drift is still the same piece', () => {
+        // An edit to the source moved the flange by half a millimetre.
+        const moved = piece(-2.4, 18.3, 60.2);
+        expect(matchPiece([moved, slug], pieceSignature(flange))).toEqual({index: 0});
+    });
+
+    test('the tolerance is proportional, with a floor for small pieces', () => {
+        // 120 long: 2.4 mm of drift is within it, 5 is not.
+        expect(matchPiece([piece(22, 142, 25)], pieceSignature(slug))).toEqual({index: 0});
+        expect(matchPiece([piece(25, 145, 25)], pieceSignature(slug))).toEqual({error: 'gone'});
+        // 20 long: the floor of 1 mm applies, not 0.4.
+        expect(matchPiece([piece(-1.2, 18.8, 60)], pieceSignature(flange))).toEqual({index: 0});
+    });
+
+    test('a piece that is no longer there is said so, never approximated', () => {
+        // Taking the nearest would hand back a blank that is wrong everywhere
+        // and says so nowhere.
+        expect(matchPiece([slug], pieceSignature(flange))).toEqual({error: 'gone'});
+    });
+
+    test('two pieces alike enough to confuse are a refusal, not a coin toss', () => {
+        expect(matchPiece([flange, piece(-2.2, 18.1, 60)], pieceSignature(flange)))
+            .toEqual({error: 'ambiguous'});
+    });
+
+    test('no record and one piece needs no choosing', () => {
+        expect(matchPiece([flange], null)).toEqual({index: 0});
+    });
+
+    test('no record and several pieces is a question for the user', () => {
+        expect(matchPiece([flange, slug], null)).toEqual({error: 'unchosen'});
+    });
+
+    test('nothing left is nothing to choose from', () => {
+        expect(matchPiece([], pieceSignature(flange))).toEqual({error: 'none'});
+        expect(matchPiece(undefined, null)).toEqual({error: 'none'});
     });
 });
