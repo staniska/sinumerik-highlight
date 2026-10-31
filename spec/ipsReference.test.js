@@ -121,7 +121,7 @@ describe('ipsStatusText', () => {
         [
             'notFound', 'cycle', 'tooDeep', 'noMachine', 'readError', 'noBlank',
             'noTools', 'toolsNotReady', 'nothingLeft', 'manyPieces', 'noProgram',
-            'chainBroken', 'failed', 'notComputed',
+            'chainBroken', 'chainNoName', 'failed', 'notComputed', 'stale',
         ].forEach(status => {
             const text = ipsStatusText(status, ref);
             expect(text).toContain('OP10');
