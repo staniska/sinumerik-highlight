@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { classifyInputs, signatureOf, programsFor } = require('../lib/ipsResolve');
+const { classifyInputs, signatureOf, programsFor, programNamesFor } = require('../lib/ipsResolve');
 const View = require('../lib/sinumerik').default;
 
 describe('classifyInputs', () => {
@@ -201,6 +201,29 @@ describe('programsFor', () => {
         write(own, 'TURN_2.MPF');
         return programsFor(path.join(own, 'TURN_3.MPF'), 'UNKNOWN').then(found => {
             expect(found.map(e => e.name)).toEqual(['TURN_2']);
+        });
+    });
+
+    // What is SUGGESTED is not what is resolved. The machine folders hold the
+    // cycles — hundreds of them — and a list of cycles answers none of the
+    // three questions these fields ask.
+    test('the suggestions come from the program folder only', () => {
+        write(own, 'TURN_2.MPF');
+        write(own, 'ZAGOT.MPF');
+        write(machineDir, 'CYCLE95.SPF');
+        write(machineDir, 'CYCLE82.SPF');
+
+        return programNamesFor(path.join(own, 'TURN_3.MPF')).then(names => {
+            expect(names).toEqual(['TURN_2', 'ZAGOT']);
+        });
+    });
+
+    test('the program itself is not suggested as its own blank', () => {
+        write(own, 'TURN_3.MPF');
+        write(own, 'ZAGOT.MPF');
+
+        return programNamesFor(path.join(own, 'TURN_3.MPF')).then(names => {
+            expect(names).toEqual(['ZAGOT']);
         });
     });
 });
