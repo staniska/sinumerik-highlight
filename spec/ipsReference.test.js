@@ -6,6 +6,8 @@ const {
     describeIpsTransform,
     ipsStatusText,
     uniqueProgramNames,
+    placeStockElements,
+    ipsUnitMult,
 } = require('../lib/ipsReference');
 
 describe('blankMode', () => {
@@ -168,5 +170,96 @@ describe('uniqueProgramNames', () => {
         expect(uniqueProgramNames([])).toEqual([]);
         expect(uniqueProgramNames(undefined)).toEqual([]);
         expect(uniqueProgramNames([null, {}, {name: ''}])).toEqual([]);
+    });
+});
+
+
+// Placing a borrowed stock in the datum of the program that borrows it.
+describe('placeStockElements', () => {
+    // A bar from Z0 to Z-100, radius 50. X is a radius throughout.
+    const bar = () => [
+        {type: 'G0', X_start: 0, Y_start: 0, Z_start: 0, X: 0, Y: 0, Z: 0},
+        {type: 'G1', X_start: 0, Y_start: 0, Z_start: 0, X: 50, Y: 0, Z: 0},
+        {type: 'G1', X_start: 50, Y_start: 0, Z_start: 0, X: 50, Y: 0, Z: -100},
+    ];
+
+    test('no offset and no mirror hands back the very same array', () => {
+        // The placement runs on every resolve, including every cache hit.
+        const elements = bar();
+        expect(placeStockElements(elements, {name: 'OP10'})).toBe(elements);
+        expect(placeStockElements(elements, {name: 'OP10', trans: {}, mirror: []})).toBe(elements);
+    });
+
+    test('an offset moves both ends of every element', () => {
+        const placed = placeStockElements(bar(), {name: 'OP10', trans: {Z: -120}});
+        expect(placed[2].Z_start).toBe(-120);
+        expect(placed[2].Z).toBe(-220);
+        expect(placed[2].X).toBe(50);
+    });
+
+    test('a mirror negates the axis it names and nothing else', () => {
+        const placed = placeStockElements(bar(), {name: 'OP10', mirror: ['Z']});
+        // Adding the (zero) offset afterwards is also what keeps a mirrored
+        // zero from coming back as -0.
+        expect(placed[2].Z_start).toBe(0);
+        expect(placed[2].Z).toBe(100);
+        expect(placed[2].X).toBe(50);
+    });
+
+    test('a flip is a mirror and then the offset, in that order', () => {
+        // The offset always means a move in THIS program's datum, whatever the
+        // mirror does — the other order would make a mirror flip the meaning of
+        // a number already typed.
+        const placed = placeStockElements(bar(), {name: 'OP10', mirror: ['Z'], trans: {Z: -100}});
+        expect(placed[2].Z_start).toBe(-100);
+        expect(placed[2].Z).toBe(0);
+    });
+
+    test('X is not doubled — the offset acts on the side, as on the machine', () => {
+        const placed = placeStockElements(bar(), {name: 'OP10', trans: {X: 5}});
+        expect(placed[2].X).toBe(55);
+        expect(placed[1].X).toBe(55);
+    });
+
+    test('an inch offset reaches the geometry in millimetres', () => {
+        const placed = placeStockElements(bar(), {name: 'OP10', trans: {Z: -1}}, 25.4);
+        expect(placed[2].Z_start).toBeCloseTo(-25.4, 9);
+        expect(placed[2].Z).toBeCloseTo(-125.4, 9);
+    });
+
+    test('the mirror is never scaled by the units', () => {
+        const placed = placeStockElements(bar(), {name: 'OP10', mirror: ['Z']}, 25.4);
+        expect(placed[2].Z).toBe(100);
+    });
+
+    test('the type and the keys of an element survive, in order', () => {
+        const placed = placeStockElements(bar(), {name: 'OP10', trans: {Z: 1}});
+        expect(placed[0].type).toBe('G0');
+        // Several places in this package read axes back with
+        // `Object.keys(el).filter(...)`, which depends on insertion order.
+        expect(Object.keys(placed[2])).toEqual(Object.keys(bar()[2]));
+    });
+
+    test('an axis the element does not carry is not invented', () => {
+        const placed = placeStockElements([{type: 'G1', Z_start: 0, Z: -10}],
+            {name: 'OP10', trans: {X: 5, Z: 1}});
+        expect(placed[0].X).toBeUndefined();
+        expect(placed[0].Z).toBe(-9);
+    });
+
+    test('nothing to place is not a failure', () => {
+        expect(placeStockElements([], {name: 'OP10', trans: {Z: 1}})).toEqual([]);
+        expect(placeStockElements(undefined, {name: 'OP10'})).toEqual([]);
+    });
+});
+
+describe('ipsUnitMult', () => {
+    test('the machine decides, not the program', () => {
+        // Written in the machine's own units, so a G70 in the code cannot
+        // change what a number in the auto-comment means.
+        expect(ipsUnitMult({units: 'inch'})).toBe(25.4);
+        expect(ipsUnitMult({units: 'metric'})).toBe(1);
+        expect(ipsUnitMult({})).toBe(1);
+        expect(ipsUnitMult(undefined)).toBe(1);
     });
 });
