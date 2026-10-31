@@ -49,7 +49,42 @@ A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer.
 
 #### Slow debug
 
-Press the **Slow debug** button to animate the toolpath step by step — it starts straight away, and the button is green while the run is on. Scroll the button to pick the speed: seven positions from 1× to 100×, shown as a fill, 10× in the middle — a mouse steps on every detent, a trackpad takes five events to a position. A spinner over the button shows the first frame being worked out. The button to the left of the progress bar holds the run and resumes it where it stopped; at the end of a run it replays from the start. The progress bar supports scrubbing: click to jump to a position, then use arrow keys to step frame by frame; the hold button is also the way back to running. The active source line is highlighted with a yellow background — your cursor is not moved. If the frame comes from a subroutine, both the main editor and the open subroutine editor scroll to and highlight the active line. Slow debug works in all three renderers (Canvas 2D, WebGL 2D, 3D).
+Press the **Slow debug** button to animate the toolpath step by step — it re-parses the program and starts straight away, and the button is green while the run is on. (An edit on its own does not re-parse, so the press is what shows you the program as it now stands.) Scroll the button to pick the speed: seven positions from 1× to 100×, shown as a fill, 10× in the middle — a mouse steps on every detent, a trackpad takes five events to a position. A spinner over the button shows the first frame being worked out. The button to the left of the progress bar holds the run and resumes it where it stopped; at the end of a run it replays from the start. The progress bar supports scrubbing: click to jump to a position, then use arrow keys to step frame by frame; the hold button is also the way back to running. The active source line is highlighted with a yellow background — your cursor is not moved. If the frame comes from a subroutine, both the main editor and the open subroutine editor scroll to and highlight the active line. Slow debug works in all three renderers (Canvas 2D, WebGL 2D, 3D).
+
+#### Axes and variables panel
+
+While slow debug is on, a **Slow debug** tab opens in Pulsar's left dock, beside the project tree.
+It follows the run: X/Y/Z in the active frame (diameters marked with ⌀ under `DIAMON`, inches when
+the program is in inches), any of `A B C U V W` and the spindle axis the program has named, and under
+a divider the values of the program's variables — from a `.DEF` file, declared in the program, passed
+to a subroutine as a `PROC` parameter, or an assigned R-parameter. The list is alphabetical and
+scrolls on its own, so the coordinates stay on screen.
+
+Everything on the panel follows the position, not the end of the parse: drag the timeline back and a
+variable shows what it held then. An axis or a variable appears only once the program has named it —
+a value never programmed is not zero. Variables of the blank and the contour are not shown, and at
+any moment the list holds the shared variables plus the locals of the program the current block
+belongs to, which is what an expression on that line could read.
+
+The tab closes with slow debug, putting the project tree back in front; if the dock was shut, opening
+it widens the layout rather than covering the program.
+
+`$AA_IW[<axis>]` reads the position of any axis the program has named — X, Y, Z in the active frame,
+`A`, `B`, `C` and the spindle axis under whatever name the machine gives it. An axis the program has
+never named has no position here and is refused by name rather than guessed at: a control would
+answer with wherever the axis physically stands, and a guessed position would enter the geometry
+silently.
+
+**Frames work with X, Y and Z only.** `TRANS`, `ROT`, `MIRROR` and their additive forms are built on
+those three throughout the parser, and an additional axis named in such a block is reported as an
+error rather than applied. Nothing shown on the panel and nothing `$AA_IW` returns is
+frame-corrected for `A`, `B`, `C`, `U`, `V`, `W` or the spindle axis: those are read exactly as the
+program wrote them.
+
+So the additional axes are read, stored, divided with the block, displayed and available to
+`$AA_IW`, but they are not full axes here. Whether a real control moves an additional axis with the
+frame — a linear `U` under an active `TRANS`, say — is not something this package has checked, so a
+program that relies on it will see different numbers here than on the machine.
 
 #### 3D viewport
 
@@ -130,6 +165,13 @@ The window is a list on the left and a preview of the selected tool on the right
 in the footer. Clicking a row selects it; `Up` and `Down` walk the list and wrap round its ends.
 The search field above the list is not implemented yet and is disabled rather than absent, so that
 it cannot silently do nothing when typed into.
+
+**Add** takes several files at once — a shop stocks a new machine with the tools it shares with the
+others, and one trip through the dialog per tool is the wrong shape for that. A file that cannot be
+read, or whose first row names nothing, is skipped rather than abandoning the rest of the selection,
+and the skipped ones are reported together in one message. A name the machine already has is refused,
+including when two of the picked files carry it: `;TOOL:NAME` resolves by name, so two tools sharing
+one would leave which of them gets drawn to the order of a list you cannot see.
 
 A program names a tool and nothing more. **Insert**, or `Enter`, writes `;TOOL:NAME` at the cursor
 and from that line on the tool is drawn translucently on the trajectory during slow debug, in the

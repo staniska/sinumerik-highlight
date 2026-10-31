@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis, fillAuxAxes } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -220,8 +220,144 @@ describe('extractBoundingContourBlock', () => {
     });
 });
 
+describe('subdivideElement', () => {
+    const move = (zs, z, extra = {}) =>
+        ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z, ...extra});
+
+    test('a block shorter than the step is passed through whole', () => {
+        const el = move(0, 0.5);
+        expect(subdivideElement(el)).toEqual([el]);
+        expect(subdivideElement(el)[0]).toBe(el);
+    });
+
+    test('the pieces cover the block end to end, in order', () => {
+        const pieces = subdivideElement(move(0, -100));
+        expect(pieces.length).toBeGreaterThan(1);
+        expect(pieces[0].Z_start).toBeCloseTo(0);
+        expect(pieces[pieces.length - 1].Z).toBeCloseTo(-100);
+        pieces.forEach((p, i) => {
+            if (i) expect(p.Z_start).toBeCloseTo(pieces[i - 1].Z);
+        });
+    });
+
+    // The copy must not be lossy. A deep copy through JSON turns NaN into null,
+    // which `Number.isNaN` does not catch and arithmetic reads as zero — and
+    // "never programmed" is exactly what the extra axes A/B/C/U/V/W will carry
+    // on a block before their first appearance.
+    test('a value that is not a number survives the copy as itself', () => {
+        const pieces = subdivideElement(move(0, -100, {A_start: NaN, A: 90}));
+
+        expect(pieces.length).toBeGreaterThan(1);
+        pieces.forEach(p => {
+            expect(Number.isNaN(p.A_start)).toBe(true);
+            expect(p.A).toBe(90);
+        });
+    });
+
+    describe('the additional axes are divided too', () => {
+        test('a block that moves an axis divides it alongside X Y Z', () => {
+            const pieces = subdivideElement(move(0, -100, {A_start: 0, A: 90}), ['A']);
+
+            expect(pieces.length).toBeGreaterThan(1);
+            expect(pieces[0].A_start).toBeCloseTo(0);
+            expect(pieces[pieces.length - 1].A).toBeCloseTo(90);
+            pieces.forEach((p, i) => {
+                if (i) expect(p.A_start).toBeCloseTo(pieces[i - 1].A);
+            });
+        });
+
+        test('a block that does not move it repeats the one value', () => {
+            const pieces = subdivideElement(move(0, -100, {A_start: 90, A: 90}), ['A']);
+
+            pieces.forEach(p => {
+                expect(p.A_start).toBe(90);
+                expect(p.A).toBe(90);
+            });
+        });
+
+        // Nothing to divide from: the axis arrives at the end of the block, and
+        // until then the pieces say nothing about it — which is what the panel
+        // reads as "not programmed yet".
+        test('the block that names an axis first gives it only to the last piece', () => {
+            const pieces = subdivideElement(move(0, -100, {A: 90}), ['A']);
+
+            expect(pieces.length).toBeGreaterThan(1);
+            pieces.slice(0, -1).forEach(p => {
+                expect('A' in p).toBe(false);
+                expect('A_start' in p).toBe(false);
+            });
+
+            const lastPiece = pieces[pieces.length - 1];
+            expect(lastPiece.A_start).toBe(90);
+            expect(lastPiece.A).toBe(90);
+        });
+
+        test('an axis the block says nothing about is not invented', () => {
+            const pieces = subdivideElement(move(0, -100), ['A', 'W']);
+
+            pieces.forEach(p => {
+                expect('A' in p).toBe(false);
+                expect('W' in p).toBe(false);
+            });
+        });
+
+        test('several axes are divided independently', () => {
+            const pieces = subdivideElement(
+                move(0, -100, {A_start: 0, A: 90, W_start: 10, W: 20, C1: 45}),
+                ['A', 'W', 'C1']);
+
+            const mid = pieces[Math.floor(pieces.length / 2)];
+            expect(mid.A).toBeGreaterThan(0);
+            expect(mid.A).toBeLessThan(90);
+            expect(mid.W).toBeGreaterThan(10);
+            expect(mid.W).toBeLessThan(20);
+            expect('C1' in mid).toBe(false);
+
+            expect(pieces[pieces.length - 1].C1).toBe(45);
+        });
+
+        // A block short enough to stay whole keeps whatever it carries: the
+        // first-appearance rule has nothing to say when there is one piece, and
+        // that piece IS the last one.
+        test('a block too short to divide is passed through untouched', () => {
+            const el = move(0, 0.5, {A: 90});
+            expect(subdivideElement(el, ['A'])[0]).toBe(el);
+        });
+
+        test('without the list, the axes are left exactly as they were', () => {
+            const pieces = subdivideElement(move(0, -100, {A_start: 0, A: 90}));
+
+            pieces.forEach(p => {
+                expect(p.A_start).toBe(0);
+                expect(p.A).toBe(90);
+            });
+        });
+    });
+
+    test('the modal state of the block reaches every piece', () => {
+        const feed = {value: 120, type: 'G95'};
+        const pieces = subdivideElement(move(0, -100, {feed, workPlane: 'G18', row: 7}));
+
+        pieces.forEach(p => {
+            expect(p.feed.value).toBe(120);
+            expect(p.workPlane).toBe('G18');
+            expect(p.row).toBe(7);
+        });
+    });
+});
+
 describe('buildAnimationPieces', () => {
     const move = (zs, z) => ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z});
+
+    test('the additional axes reach subdivideElement through it', () => {
+        const canvas = [{type: 'G1', X_start: 0, Y_start: 0, Z_start: 0,
+                         X: 0, Y: 0, Z: -100, A_start: 0, A: 90}];
+        const {elements} = buildAnimationPieces(canvas, ['A']);
+
+        expect(elements.length).toBeGreaterThan(1);
+        expect(elements[0].A).toBeLessThan(90);
+        expect(elements[elements.length - 1].A).toBeCloseTo(90);
+    });
 
     test('every piece says which program block it came from', () => {
         const canvas = [move(0, 100), move(100, 101), move(101, 300)];
@@ -455,5 +591,72 @@ describe('wheelIsMouse', () => {
     // the doubt is deliberately resolved to.
     test('a swipe landing exactly on a detent is taken for a mouse', () => {
         expect(wheelIsMouse(wheel(120))).toBe(true);
+    });
+});
+
+describe('isLinearAxis / isFrameAxis', () => {
+    test('a length takes the unit, an angle does not', () => {
+        ['X', 'Y', 'Z', 'U', 'V', 'W'].forEach(ax => expect(isLinearAxis(ax)).toBe(true));
+        ['A', 'B', 'C'].forEach(ax => expect(isLinearAxis(ax)).toBe(false));
+    });
+
+    // A frame is built on three axes. The additional ones are read and shown
+    // and nothing more, and `frame.mirror` holds no entry for them.
+    test('a frame is built on X Y Z alone', () => {
+        ['X', 'Y', 'Z'].forEach(ax => expect(isFrameAxis(ax)).toBe(true));
+        ['A', 'B', 'C', 'U', 'V', 'W'].forEach(ax => expect(isFrameAxis(ax)).toBe(false));
+    });
+
+    // The machine names its spindle axis, and it can be anything.
+    test('a multi-letter axis name is neither', () => {
+        ['C2', 'SP1', ''].forEach(name => {
+            expect(isLinearAxis(name)).toBe(false);
+            expect(isFrameAxis(name)).toBe(false);
+        });
+    });
+});
+
+describe('fillAuxAxes', () => {
+    test('an element with no block of its own gets both ends alike', () => {
+        const corner = {type: 'G1', X_start: 0, X: 5};
+        fillAuxAxes(corner, ['A'], {A: 90});
+
+        expect(corner.A).toBe(90);
+        expect(corner.A_start).toBe(90);
+    });
+
+    // An element born of a block carries its own pair, with a start that may
+    // differ from the end. Overwriting it would flatten the very interpolation
+    // the block is there to express.
+    test('an element that carries the axis already is left alone', () => {
+        const block = {type: 'G1', A_start: 0, A: 90};
+        fillAuxAxes(block, ['A'], {A: 180});
+
+        expect(block.A_start).toBe(0);
+        expect(block.A).toBe(90);
+    });
+
+    test('an axis not named anywhere yet leaves no key', () => {
+        const corner = {type: 'G1'};
+        fillAuxAxes(corner, ['A', 'W'], {A: 90});
+
+        expect(corner.A).toBe(90);
+        expect('W' in corner).toBe(false);
+        expect('W_start' in corner).toBe(false);
+    });
+
+    test('a zero is a value like any other', () => {
+        const corner = {type: 'G1'};
+        fillAuxAxes(corner, ['A'], {A: 0});
+
+        expect(corner.A).toBe(0);
+        expect(corner.A_start).toBe(0);
+    });
+
+    test('nothing to fill in is not an error', () => {
+        const corner = {type: 'G1'};
+        expect(() => fillAuxAxes(corner, [], {})).not.toThrow();
+        expect(() => fillAuxAxes(corner, undefined, undefined)).not.toThrow();
+        expect(Object.keys(corner)).toEqual(['type']);
     });
 });

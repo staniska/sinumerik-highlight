@@ -21,6 +21,7 @@ jest.mock('../lib/sinumerik', () => ({
                 canvas: [],
                 contourElements: {PROG: []},
                 moveGroup: '',
+                auxAxes: [],
             },
             singleLineDebugData: {machine: {firstSpindle: {name: 'C'}}},
             singleLineDebugHelpDiv: {C_As_Rot: {input: {checked: false}}},
@@ -65,6 +66,7 @@ jest.mock('../lib/utils', () => ({
     normalizeFileName: jest.fn((name) => name.replace(/\./g, '_').toUpperCase()),
     unmaskStringSpaces: jest.fn((str) => str),
     isLinearAxis: jest.fn((name) => /^[XYZUVW]$/.test(name)),
+    isFrameAxis: jest.fn((name) => /^[XYZ]$/.test(name)),
 }));
 
 jest.mock('../lib/degreesMath', () => ({
@@ -95,6 +97,7 @@ beforeEach(() => {
     View.sinumerikView.parseData.unitMult = 1;
     View.sinumerikView.parseData.transformation = null;
     View.sinumerikView.parseData.mcall = {};
+    View.sinumerikView.parseData.auxAxes = [];
     View.sinumerikView.parseData.frame = {
         mirror: {X: 1, Y: 1, Z: 1},
         trans: {X: 0, Y: 0, Z: 0},
@@ -258,6 +261,211 @@ describe('generatePrimitives', () => {
 // mock that evaluates plain numeric literals, since these fields don't use
 // checkCoordinates' own regex parsing.
 
+describe('SUPA and G53', () => {
+    const parseRowsFn = jest.fn();
+    const PROG = 'PROG';
+    const prog = (row) => [row];
+
+    // Neither is acted on. Claiming the word is the whole point: an unknown one
+    // falls through every parser and comes back as `Not one parser worked`,
+    // which stops the trajectory on an otherwise ordinary block.
+    test('both are claimed, and neither is an error', async () => {
+        for (const word of ['SUPA', 'G53']) {
+            View.sinumerikView.parseData.errors = [];
+            const result = await generatePrimitives(word, PROG, 0, prog(word), parseRowsFn);
+
+            expect(result.operators[0].type).toBe('supa');
+            expect(View.sinumerikView.parseData.errors).toEqual([]);
+        }
+    });
+
+    test('in a block with a move, the move still parses', async () => {
+        View.sinumerikView.parseData.errors = [];
+        const result = await generatePrimitives('G53 X10', PROG, 0, prog('G0 G53 X10'), parseRowsFn);
+
+        expect(result.operators[0].type).toBe('supa');
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    // The word is whole: a longer one starting with it is not G53.
+    test('G530 is not claimed by it', async () => {
+        const result = await generatePrimitives('G530', PROG, 0, prog('G530'), parseRowsFn);
+
+        expect(result.operators[0].type).not.toBe('supa');
+    });
+});
+
+describe('the additional axes A B C U V W', () => {
+    const parseRowsFn = jest.fn();
+    const PROG = 'PROG';
+    const prog = (row) => [row];
+
+    beforeEach(() => {
+        mathParse.mockImplementation((expr) => {
+            const n = parseFloat(expr);
+            return Number.isNaN(n) ? null : n;
+        });
+        View.sinumerikView.parseData.moveGroup = 'G1';
+    });
+
+    test('all nine are read as coordinates', async () => {
+        for (const axis of ['X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W']) {
+            View.sinumerikView.parseData.errors = [];
+            const result = await generatePrimitives(`${axis}10`, PROG, 0, prog(`${axis}10`), parseRowsFn);
+
+            expect(result.operators[0].type).toBe('coordinate');
+            expect(result.operators[0].name).toBe(axis);
+            expect(View.sinumerikView.parseData.errors).toEqual([]);
+        }
+    });
+
+    // U V W are lengths, A B C are angles. isLinearAxis already said so before
+    // the tokenizer knew these axes existed.
+    test('U V W take the unit, A B C do not', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+
+        for (const axis of ['U', 'V', 'W']) {
+            const result = await generatePrimitives(`${axis}10`, PROG, 0, prog(`${axis}10`), parseRowsFn);
+            expect(result.operators[0].value).toBe(254);
+        }
+        for (const axis of ['A', 'B', 'C']) {
+            const result = await generatePrimitives(`${axis}10`, PROG, 0, prog(`${axis}10`), parseRowsFn);
+            expect(result.operators[0].value).toBe(10);
+        }
+    });
+
+    test('a diameter mode applies to X alone', async () => {
+        View.sinumerikView.parseData.diamon = 1;
+
+        const u = await generatePrimitives('U10', PROG, 0, prog('U10'), parseRowsFn);
+        expect(u.operators[0].value).toBe(10);
+    });
+
+    describe('auxAxes', () => {
+        test('names the additional axes in the order they first appeared', async () => {
+            await generatePrimitives('G1 W5 A90', PROG, 0, prog('G1 W5 A90'), parseRowsFn);
+            await generatePrimitives('G1 X10 B45', PROG, 1, prog('G1 X10 B45'), parseRowsFn);
+
+            expect(View.sinumerikView.parseData.auxAxes).toEqual(['W', 'A', 'B']);
+        });
+
+        test('X Y Z are never in it — they are not additional', async () => {
+            await generatePrimitives('G1 X10 Y20 Z30', PROG, 0, prog('G1 X10 Y20 Z30'), parseRowsFn);
+
+            expect(View.sinumerikView.parseData.auxAxes).toEqual([]);
+        });
+
+        test('an axis named again is not listed twice', async () => {
+            for (let row = 0; row < 5; row++) {
+                await generatePrimitives('G1 C90', PROG, row, prog('G1 C90'), parseRowsFn);
+            }
+
+            expect(View.sinumerikView.parseData.auxAxes).toEqual(['C']);
+        });
+    });
+
+    // The machine names its spindle axis, and the name may carry a digit. Found
+    // on a real machine whose spindle axis is C1: `G0 C100` was read as that
+    // axis at zero, because the alternation tried `C1` first and a lookahead
+    // that accepts a digit was happy with the `0` after it, leaving `00` as the
+    // value. The control only reads such a name as an axis when an `=` follows.
+    describe('a spindle axis whose name carries a digit', () => {
+        let savedSpindle;
+
+        beforeEach(() => {
+            savedSpindle = View.sinumerikView.singleLineDebugData.machine.firstSpindle;
+            View.sinumerikView.singleLineDebugData.machine.firstSpindle = {name: 'C1'};
+        });
+
+        afterEach(() => {
+            View.sinumerikView.singleLineDebugData.machine.firstSpindle = savedSpindle;
+        });
+
+        test('C100 is the C axis at 100, not C1 at zero', async () => {
+            const result = await generatePrimitives('C100', PROG, 0, prog('G0 C100'), parseRowsFn);
+
+            expect(result.operators[0].name).toBe('C');
+            expect(result.operators[0].value).toBe(100);
+        });
+
+        test('C1=100 is the spindle axis', async () => {
+            const result = await generatePrimitives('C1=100', PROG, 0, prog('G0 C1=100'), parseRowsFn);
+
+            expect(result.operators[0].name).toBe('C1');
+            expect(result.operators[0].value).toBe(100);
+        });
+
+        test('and it is the name the panel will be told about', async () => {
+            await generatePrimitives('C1=100', PROG, 0, prog('G0 C1=100'), parseRowsFn);
+
+            expect(View.sinumerikView.parseData.auxAxes).toEqual(['C1']);
+        });
+
+        test('a longer name is no coordinate at all without the =', async () => {
+            View.sinumerikView.singleLineDebugData.machine.firstSpindle = {name: 'SP1'};
+            View.sinumerikView.parseData.errors = [];
+            const result = await generatePrimitives('SP11000', PROG, 0, prog('SP11000'), parseRowsFn);
+
+            expect(result.operators[0]?.type).not.toBe('coordinate');
+        });
+    });
+
+    // A frame is built on X/Y/Z alone, and `frame.mirror` holds nothing else.
+    // Before the guard, `TRANS U10` multiplied by `undefined` and translated the
+    // frame by NaN — which reads as a reset — in place of the error the row has
+    // always earned.
+    describe('a frame takes no additional axis', () => {
+        const {generateFrame} = require('../lib/coordinates');
+
+        test('TRANS on one is refused and reported, as it always was', async () => {
+            View.sinumerikView.parseData.errors = [];
+            generateFrame.mockClear();
+            await generatePrimitives('TRANS U10', PROG, 0, prog('TRANS U10'), parseRowsFn);
+
+            expect(View.sinumerikView.parseData.errors.length).toBe(1);
+            expect(View.sinumerikView.parseData.errors[0].text).toMatch('TRANS');
+            // The operand never reached the frame, so nothing was translated by
+            // a NaN — which is the whole point of the guard. The row behaves
+            // exactly as it did before the tokenizer learned U.
+            expect(generateFrame).toHaveBeenCalledWith(0, 'TRANS', [], PROG, 0);
+        });
+
+        test('TRANS on X Y Z still works', async () => {
+            View.sinumerikView.parseData.errors = [];
+            generateFrame.mockClear();
+            const result = await generatePrimitives('TRANS X10 Z-2', PROG, 0, prog('TRANS X10 Z-2'), parseRowsFn);
+
+            expect(result.operators[0].type).toBe('Frame');
+            expect(View.sinumerikView.parseData.errors).toEqual([]);
+            expect(generateFrame).toHaveBeenCalledWith(
+                0, 'TRANS',
+                [{name: 'X', value: 10}, {name: 'Z', value: -2}],
+                PROG, 0);
+        });
+
+        // Pre-existing, and surfaced by the test above rather than introduced
+        // here: the `return primitive` in the frame region sits inside a
+        // `forEach` callback, so it leaves the callback and nothing else. The
+        // row is reported, `parseError` is overwritten with `Frame` straight
+        // after the loop, and the frame is built from whichever operands did
+        // parse. Fixing it changes what a half-readable frame row does, so it
+        // belongs to its own change, not to this one.
+        test('a refused operand still reports the row as a frame', async () => {
+            View.sinumerikView.parseData.errors = [];
+            const result = await generatePrimitives('TRANS X10 U5', PROG, 0, prog('TRANS X10 U5'), parseRowsFn);
+
+            expect(View.sinumerikView.parseData.errors.length).toBe(1);
+            expect(result.operators[0].type).toBe('Frame');
+        });
+
+        test('an additional axis named in a frame row is not listed in auxAxes', async () => {
+            await generatePrimitives('TRANS A10', PROG, 0, prog('TRANS A10'), parseRowsFn);
+
+            expect(View.sinumerikView.parseData.auxAxes).toEqual([]);
+        });
+    });
+});
+
 describe('unitMult scaling', () => {
     const parseRowsFn = jest.fn();
     const PROG = 'PROG';
@@ -306,12 +514,18 @@ describe('unitMult scaling', () => {
         expect(result.operators[0].value).toBe(10);
     });
 
+    // Written `C1=10`, not `C110`: a name carrying a digit is only an axis with
+    // an `=` after it. This case used to pass `C110`, which the tokenizer read
+    // as C1 at 10 — the very misreading that turned a move to C100 into a
+    // spindle at zero on a real machine. The value being checked is the same
+    // either way; only the input was illegal.
     test('spindle axis (e.g. C1) is not scaled', async () => {
         View.sinumerikView.singleLineDebugData.machine.firstSpindle.name = 'C1';
         View.sinumerikView.parseData.unitMult = 25.4;
-        const result = await generatePrimitives('C110', PROG, 0, prog('C110'), parseRowsFn);
+        const result = await generatePrimitives('C1=10', PROG, 0, prog('C1=10'), parseRowsFn);
         View.sinumerikView.singleLineDebugData.machine.firstSpindle.name = 'C';
 
+        expect(result.operators[0].name).toBe('C1');
         expect(result.operators[0].value).toBe(10);
     });
 
@@ -833,6 +1047,103 @@ describe('feed operator wiring', () => {
         // The lookahead wants `=` or a digit right after the word, so FFWON and
         // friends keep falling through to whoever owns them.
         expect((await firstOperator('FB')).type).not.toMatch(/_feed$/);
+    });
+});
+
+describe('the additional axes on the canvas element', () => {
+    const PROG = 'PROG';
+
+    // `generateCanvasPrimitives` takes operators, so the tokenizer that fills
+    // auxAxes is not in the picture here: the list is set directly, the way the
+    // parse would have left it by the time this block is reached.
+    const g1 = (x, extraOperators = []) => ({
+        operators: [
+            {type: 'moveGroup', value: 'G1'},
+            {type: 'coordinate', name: 'X', value: String(x)},
+            ...extraOperators,
+        ]
+    });
+    const axis = (name, value) => ({type: 'coordinate', name, value: String(value)});
+    const last = () => View.sinumerikView.parseData.canvas[View.sinumerikView.parseData.canvas.length - 1];
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.moveGroup = 'G1';
+        View.sinumerikView.parseData.plane = 'G17';
+        View.sinumerikView.parseData.rndm = 0;
+        View.sinumerikView.parseData.feed = {type: 'G95', value: 0.25};
+        View.sinumerikView.parseData.blockFeed = null;
+        View.sinumerikView.parseData.canvas = [];
+        View.sinumerikView.parseData.auxAxes = [];
+        View.sinumerikView.parseData.auxPos = {};
+    });
+
+    test('an axis never named leaves no key at all', () => {
+        generateCanvasPrimitives(g1(10), PROG, 0);
+
+        expect('A' in last()).toBe(false);
+        expect('A_start' in last()).toBe(false);
+    });
+
+    // The one block with an end and no start: there is nothing to have come
+    // from. Absence is what the panel reads as "not programmed yet", and the
+    // key has to be missing rather than NaN — a NaN would not survive the copy
+    // the animation makes of every piece.
+    test('the block that names an axis first has an end and no start', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+
+        expect(last().A).toBe(90);
+        expect('A_start' in last()).toBe(false);
+    });
+
+    test('a block that does not name it carries the value it already had', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+        generateCanvasPrimitives(g1(20), PROG, 1);
+
+        expect(last().A_start).toBe(90);
+        expect(last().A).toBe(90);
+    });
+
+    test('a block that moves it carries both ends', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+        generateCanvasPrimitives(g1(20, [axis('A', 180)]), PROG, 1);
+
+        expect(last().A_start).toBe(90);
+        expect(last().A).toBe(180);
+    });
+
+    test('several axes are kept apart', () => {
+        View.sinumerikView.parseData.auxAxes = ['A', 'W', 'C1'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90), axis('W', 5)]), PROG, 0);
+        generateCanvasPrimitives(g1(20, [axis('C1', 45)]), PROG, 1);
+
+        expect(last().A).toBe(90);
+        expect(last().W).toBe(5);
+        expect(last().C1).toBe(45);
+        expect('C1_start' in last()).toBe(false);
+    });
+
+    // The keys of a coordinate are read out of insertion order in a couple of
+    // places (`Object.keys(el).filter(whitelist).map(...)`), so the three that
+    // the geometry is built on must keep theirs.
+    test('X Y Z keep their order, and the new keys come after', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+
+        const keys = Object.keys(last());
+        expect(keys.filter(k => ['X_start', 'Y_start', 'Z_start'].includes(k)))
+            .toEqual(['X_start', 'Y_start', 'Z_start']);
+        expect(keys.filter(k => ['X', 'Y', 'Z'].includes(k))).toEqual(['X', 'Y', 'Z']);
+        expect(keys.indexOf('A')).toBeGreaterThan(keys.indexOf('Z'));
+    });
+
+    test('the running value is what the next block starts from', () => {
+        View.sinumerikView.parseData.auxAxes = ['A'];
+        generateCanvasPrimitives(g1(10, [axis('A', 90)]), PROG, 0);
+
+        expect(View.sinumerikView.parseData.auxPos).toEqual({A: 90});
     });
 });
 

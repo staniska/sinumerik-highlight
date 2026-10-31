@@ -4,6 +4,7 @@ jest.mock('../lib/sinumerik', () => ({
         sinumerikView: {
             parseData: {
                 variables: {},
+                variablesDirty: new Set(),
                 errors: [],
             }
         }
