@@ -339,3 +339,48 @@ describe('toolFromCursorLine', () => {
         expect(toolFromCursorLine(';TOOL:TURN35', undefined)).toBeNull();
     });
 });
+
+describe('toolFromFile', () => {
+    const { toolFromFile, fileNameOf } = require('../lib/tools');
+
+    test('the name comes off the first row', () => {
+        expect(toolFromFile(';NAME:ROMB_2_4_RIGHT', [])).toEqual({name: 'ROMB_2_4_RIGHT'});
+    });
+
+    // The file comes from disk, so on Windows the row ends with a CR.
+    test('a CRLF line ending is not part of the name', () => {
+        expect(toolFromFile(';NAME:ROMB\r', [])).toEqual({name: 'ROMB'});
+    });
+
+    test('a file that names nothing is refused', () => {
+        expect(toolFromFile(';just a comment', []).error).toBe('no-name');
+        expect(toolFromFile('', []).error).toBe('no-name');
+        expect(toolFromFile(';NAME:', []).error).toBe('no-name');
+    });
+
+    // `;TOOL:NAME` resolves by name, so two tools sharing one would leave which
+    // of them gets drawn to the order of a list the user cannot see.
+    test('a name the machine already has is refused, and named', () => {
+        const picked = toolFromFile(';NAME:ROMB', ['DRILL', 'ROMB']);
+
+        expect(picked.error).toBe('duplicate');
+        expect(picked.name).toBe('ROMB');
+    });
+
+    // Adding several at once: the caller passes the names as the list grows, so
+    // two picked files naming one tool meet the same rule.
+    test('two of the picked files naming one tool', () => {
+        const taken = [];
+        const first = toolFromFile(';NAME:ROMB', taken);
+        expect(first.error).toBe(undefined);
+        taken.push(first.name);
+
+        expect(toolFromFile(';NAME:ROMB', taken).error).toBe('duplicate');
+    });
+
+    test('the file name is taken off either kind of path', () => {
+        expect(fileNameOf('/storage/tools/ROMB.SPF')).toBe('ROMB.SPF');
+        expect(fileNameOf('C:\\tools\\ROMB.SPF')).toBe('ROMB.SPF');
+        expect(fileNameOf('ROMB.SPF')).toBe('ROMB.SPF');
+    });
+});

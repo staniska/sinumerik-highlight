@@ -166,6 +166,13 @@ in the footer. Clicking a row selects it; `Up` and `Down` walk the list and wrap
 The search field above the list is not implemented yet and is disabled rather than absent, so that
 it cannot silently do nothing when typed into.
 
+**Add** takes several files at once — a shop stocks a new machine with the tools it shares with the
+others, and one trip through the dialog per tool is the wrong shape for that. A file that cannot be
+read, or whose first row names nothing, is skipped rather than abandoning the rest of the selection,
+and the skipped ones are reported together in one message. A name the machine already has is refused,
+including when two of the picked files carry it: `;TOOL:NAME` resolves by name, so two tools sharing
+one would leave which of them gets drawn to the order of a list you cannot see.
+
 A program names a tool and nothing more. **Insert**, or `Enter`, writes `;TOOL:NAME` at the cursor
 and from that line on the tool is drawn translucently on the trajectory during slow debug, in the
 WebGL and the 3D view. The marker may stand anywhere a comment may, the program's header included.
