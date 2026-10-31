@@ -5,6 +5,7 @@ jest.mock('../lib/sinumerik', () => ({
             parseData: {
                 variables: {firstChannelVariables: {}},
                 axesPos: {X: 0, Y: 0, Z: 0},
+                auxPos: {},
                 frame: {
                     basis: [[1,0,0],[0,1,0],[0,0,1]],
                     trans: {X: 0, Y: 0, Z: 0},
@@ -77,6 +78,7 @@ describe('mathParse', () => {
         View = require('../lib/sinumerik').default;
         View.sinumerikView.parseData.variables = {firstChannelVariables: {}};
         View.sinumerikView.parseData.errors = [];
+        View.sinumerikView.parseData.auxPos = {};
         View.sinumerikView.parseData.unitMult = 1;
         getCoordinatesInFrame.mockReturnValue([0, 0, 0]);
     });
@@ -134,5 +136,61 @@ describe('mathParse', () => {
         getCoordinatesInFrame.mockReturnValue([254, 0, 0]);
         View.sinumerikView.parseData.unitMult = 25.4;
         expect(mathParse('$AA_IW[X]', 'prog', 0)).toBe(10);
+    });
+
+    describe('$AA_IW of an additional axis', () => {
+        test('A B C come from where the parse keeps them', () => {
+            View.sinumerikView.parseData.auxPos = {A: 90, B: -12.5, C: 180};
+
+            expect(mathParse('$AA_IW[A]', 'prog', 0)).toBe(90);
+            expect(mathParse('$AA_IW[B]', 'prog', 0)).toBe(-12.5);
+            expect(mathParse('$AA_IW[C]+1', 'prog', 0)).toBe(181);
+        });
+
+        // An angle is degrees in any unit, which `isLinearAxis` has always said.
+        test('an angle takes no unit, an additional length does', () => {
+            View.sinumerikView.parseData.unitMult = 25.4;
+            View.sinumerikView.parseData.auxPos = {A: 90, W: 254};
+
+            expect(mathParse('$AA_IW[A]', 'prog', 0)).toBe(90);
+            expect(mathParse('$AA_IW[W]', 'prog', 0)).toBe(10);
+        });
+
+        // The machine names its spindle axis and it may be anything, so the
+        // name is matched rather than listed.
+        test('the spindle axis is read under whatever name it has', () => {
+            View.sinumerikView.parseData.auxPos = {C1: 45, SP1: 1000};
+
+            expect(mathParse('$AA_IW[C1]', 'prog', 0)).toBe(45);
+            expect(mathParse('$AA_IW[SP1]', 'prog', 0)).toBe(1000);
+        });
+
+        test('a diameter mode touches X alone', () => {
+            View.sinumerikView.parseData.diamon = 1;
+            View.sinumerikView.parseData.auxPos = {A: 20};
+
+            expect(mathParse('$AA_IW[A]', 'prog', 0)).toBe(20);
+        });
+
+        // A control answers with wherever the axis physically stands; this
+        // reads G-code, and a guessed position would enter the geometry
+        // silently. Refused by name, as an unassigned R-parameter is.
+        test('an axis never programmed is refused and said so', () => {
+            View.sinumerikView.parseData.auxPos = {A: 90};
+
+            expect(mathParse('$AA_IW[B]', 'prog', 7)).toBe(null);
+            expect(View.sinumerikView.parseData.errors.length).toBe(1);
+            expect(View.sinumerikView.parseData.errors[0].text).toMatch('$AA_IW[B]');
+            expect(View.sinumerikView.parseData.errors[0].text).toMatch('row 8');
+            expect(View.sinumerikView.parseData.errors[0].row).toBe(7);
+        });
+
+        // Two of them in one expression, so the loop is exercised rather than
+        // just the first replacement.
+        test('two axes in one expression', () => {
+            View.sinumerikView.parseData.auxPos = {A: 90, C: 10};
+
+            expect(mathParse('$AA_IW[A]-$AA_IW[C]', 'prog', 0)).toBe(80);
+        });
     });
 });

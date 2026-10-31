@@ -69,6 +69,23 @@ belongs to, which is what an expression on that line could read.
 The tab closes with slow debug, putting the project tree back in front; if the dock was shut, opening
 it widens the layout rather than covering the program.
 
+`$AA_IW[<axis>]` reads the position of any axis the program has named — X, Y, Z in the active frame,
+`A`, `B`, `C` and the spindle axis under whatever name the machine gives it. An axis the program has
+never named has no position here and is refused by name rather than guessed at: a control would
+answer with wherever the axis physically stands, and a guessed position would enter the geometry
+silently.
+
+**Frames work with X, Y and Z only.** `TRANS`, `ROT`, `MIRROR` and their additive forms are built on
+those three throughout the parser, and an additional axis named in such a block is reported as an
+error rather than applied. Nothing shown on the panel and nothing `$AA_IW` returns is
+frame-corrected for `A`, `B`, `C`, `U`, `V`, `W` or the spindle axis: those are read exactly as the
+program wrote them.
+
+So the additional axes are read, stored, divided with the block, displayed and available to
+`$AA_IW`, but they are not full axes here. Whether a real control moves an additional axis with the
+frame — a linear `U` under an active `TRANS`, say — is not something this package has checked, so a
+program that relies on it will see different numbers here than on the machine.
+
 #### 3D viewport
 
 Displays the toolpath in perspective mode. Camera position is preserved when switching between 2D and 3D views. Switching to a new file automatically returns to 2D view.
