@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: { programmData: {} } }
 }));
 
-const { parseAutoComment, loadDataFromComment } = require('../lib/inner-comment');
+const { parseAutoComment, loadDataFromComment, commentPayload } = require('../lib/inner-comment');
 const View = require('../lib/sinumerik').default;
 
 describe('parseAutoComment', () => {
@@ -175,5 +175,142 @@ describe('loadDataFromComment units back-compat', () => {
         loadDataFromComment();
 
         expect(View.sinumerikView.programmData['/test/inch.mpf'].machine.units).toBe('inch');
+    });
+});
+
+
+// --- commentPayload: only what the file itself declares (granular auto-comment) ---
+//
+// `loadDataFromComment` seeds blank/contour defaults whether the file named them
+// or not, so the rule that decides what reaches the program text is the one
+// worth pinning: it is what kept `Attach` from writing a BLANK nobody asked for.
+
+describe('commentPayload', () => {
+    const data = {
+        machine: { machineName: 'M1', machineType: 'Lathe', units: 'metric' },
+        blank: { name: 'BLANK' },
+        contour: { name: 'DETAL' },
+    };
+
+    test('keeps only the declared keys', () => {
+        expect(commentPayload(data, new Set(['contour']))).toEqual({ contour: { name: 'DETAL' } });
+    });
+
+    test('an undeclared default never reaches the file', () => {
+        const payload = commentPayload(data, new Set(['machine', 'contour']));
+        expect(payload.blank).toBeUndefined();
+        expect(Object.keys(payload).sort()).toEqual(['contour', 'machine']);
+    });
+
+    test('declaring everything reproduces the old whole-object behaviour', () => {
+        expect(commentPayload(data, new Set(['machine', 'blank', 'contour']))).toEqual(data);
+    });
+
+    test('accepts an array as well as a Set', () => {
+        expect(commentPayload(data, ['blank'])).toEqual({ blank: { name: 'BLANK' } });
+    });
+
+    test('nothing declared yields an empty payload', () => {
+        expect(commentPayload(data, new Set())).toEqual({});
+        expect(commentPayload(data, undefined)).toEqual({});
+    });
+
+    test('tolerates missing data', () => {
+        expect(commentPayload(undefined, new Set(['machine']))).toEqual({});
+        expect(commentPayload(null, new Set(['machine']))).toEqual({});
+    });
+
+    test('machine is written verbatim — sinumerik-to-nc reads its structure', () => {
+        const withEmpty = { machine: { machineName: 'M1', firstCarriage: {} } };
+        expect(commentPayload(withEmpty, new Set(['machine'])).machine)
+            .toEqual({ machineName: 'M1', firstCarriage: {} });
+    });
+
+    test('an empty offset and an empty mirror are left out of ips', () => {
+        const withIps = { ips: { name: 'OP10', trans: {}, mirror: [] } };
+        expect(commentPayload(withIps, new Set(['ips'])).ips).toEqual({ name: 'OP10' });
+    });
+
+    test('a named offset axis survives pruning', () => {
+        const withIps = { ips: { name: 'OP10', trans: { Z: -120 }, mirror: ['Z'] } };
+        expect(commentPayload(withIps, new Set(['ips'])).ips)
+            .toEqual({ name: 'OP10', trans: { Z: -120 }, mirror: ['Z'] });
+    });
+
+    test('a zero offset is a value, not an absence', () => {
+        const withIps = { ips: { name: 'OP10', trans: { Z: 0 } } };
+        expect(commentPayload(withIps, new Set(['ips'])).ips)
+            .toEqual({ name: 'OP10', trans: { Z: 0 } });
+    });
+
+    test('a key whose whole value is empty is dropped', () => {
+        expect(commentPayload({ ips: {} }, new Set(['ips']))).toEqual({});
+    });
+});
+
+
+// --- loadDataFromComment records what the text declared ---
+
+describe('loadDataFromComment declaredFields', () => {
+    const BEGIN = ';This comment is automatically created by sinumerik-highlight package';
+    const END = ';End of comment created by sinumerik-highlight package';
+
+    const setEditor = (path, text) => {
+        global.atom = {
+            workspace: {
+                getActiveTextEditor: () => ({
+                    getPath: () => path,
+                    getText: () => text,
+                }),
+            },
+        };
+    };
+
+    beforeEach(() => {
+        View.sinumerikView.programmData = {};
+        View.sinumerikView.declaredFields = {};
+    });
+
+    test('a file that names only its machine declares only machine', () => {
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"machine":{"machineName":"M1","machineType":"Lathe"}}',
+            END,
+        ].join('\n');
+        setEditor('/test/one.mpf', text);
+
+        loadDataFromComment();
+
+        expect(Array.from(View.sinumerikView.declaredFields['/test/one.mpf'])).toEqual(['machine']);
+        // The defaults are still in memory — they are simply not declared.
+        expect(View.sinumerikView.programmData['/test/one.mpf'].blank).toEqual({ name: 'BLANK' });
+        expect(commentPayload(
+            View.sinumerikView.programmData['/test/one.mpf'],
+            View.sinumerikView.declaredFields['/test/one.mpf'],
+        ).blank).toBeUndefined();
+    });
+
+    test('a file with no auto-comment declares nothing', () => {
+        setEditor('/test/bare.mpf', 'N1 G0 X0\nM30');
+
+        loadDataFromComment();
+
+        expect(Array.from(View.sinumerikView.declaredFields['/test/bare.mpf'])).toEqual([]);
+    });
+
+    test('an old file with all three keys declares all three', () => {
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"machine":{"machineName":"M1"},"blank":{"name":"ZAGOT"},"contour":{"name":"DETAL"}}',
+            END,
+        ].join('\n');
+        setEditor('/test/old.mpf', text);
+
+        loadDataFromComment();
+
+        expect(Array.from(View.sinumerikView.declaredFields['/test/old.mpf']).sort())
+            .toEqual(['blank', 'contour', 'machine']);
     });
 });
