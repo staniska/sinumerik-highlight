@@ -51,6 +51,24 @@ A WebGL-based 2D renderer is available alongside the default Canvas 2D renderer.
 
 Press the **Slow debug** button to animate the toolpath step by step — it re-parses the program and starts straight away, and the button is green while the run is on. (An edit on its own does not re-parse, so the press is what shows you the program as it now stands.) Scroll the button to pick the speed: seven positions from 1× to 100×, shown as a fill, 10× in the middle — a mouse steps on every detent, a trackpad takes five events to a position. A spinner over the button shows the first frame being worked out. The button to the left of the progress bar holds the run and resumes it where it stopped; at the end of a run it replays from the start. The progress bar supports scrubbing: click to jump to a position, then use arrow keys to step frame by frame; the hold button is also the way back to running. The active source line is highlighted with a yellow background — your cursor is not moved. If the frame comes from a subroutine, both the main editor and the open subroutine editor scroll to and highlight the active line. Slow debug works in all three renderers (Canvas 2D, WebGL 2D, 3D).
 
+#### Axes and variables panel
+
+While slow debug is on, a **Slow debug** tab opens in Pulsar's left dock, beside the project tree.
+It follows the run: X/Y/Z in the active frame (diameters marked with ⌀ under `DIAMON`, inches when
+the program is in inches), any of `A B C U V W` and the spindle axis the program has named, and under
+a divider the values of the program's variables — from a `.DEF` file, declared in the program, passed
+to a subroutine as a `PROC` parameter, or an assigned R-parameter. The list is alphabetical and
+scrolls on its own, so the coordinates stay on screen.
+
+Everything on the panel follows the position, not the end of the parse: drag the timeline back and a
+variable shows what it held then. An axis or a variable appears only once the program has named it —
+a value never programmed is not zero. Variables of the blank and the contour are not shown, and at
+any moment the list holds the shared variables plus the locals of the program the current block
+belongs to, which is what an expression on that line could read.
+
+The tab closes with slow debug, putting the project tree back in front; if the dock was shut, opening
+it widens the layout rather than covering the program.
+
 #### 3D viewport
 
 Displays the toolpath in perspective mode. Camera position is preserved when switching between 2D and 3D views. Switching to a new file automatically returns to 2D view.
