@@ -1402,11 +1402,27 @@
 
 // sldDockPanel.js: the slow-debug tab in Pulsar's left dock. The dock paints its
 // own background, so only the padding and the text colour are ours.
+// A column: the position keeps its place while a long list of variables is
+// scrolled, so the scroll belongs to the list alone and not to the panel. That
+// needs `min-height: 0` on the list — a flex item will not shrink below its
+// content without it, and the list would push the panel taller instead of
+// scrolling inside it.
 .sinumerikSldDock {
   height: 100%;
   padding: 10px;
-  overflow: auto;
   color: @sin-text;
+  display: flex;
+  flex-direction: column;
+}
+
+.sinumerikSldDockAxes {
+  flex: 0 0 auto;
+}
+
+.sinumerikSldDockVarList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sinumerikSldDockPlaceholder {
@@ -1414,12 +1430,19 @@
 }
 
 .sinumerikSldDockHeader {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   color: @sin-text-subtle;
   border-bottom: 1px solid @sin-border;
   padding-bottom: 4px;
   margin-bottom: 6px;
+}
+
+// The same rule serves as the divider between the two halves, so the variables
+// cannot be read as a continuation of the coordinates.
+.sinumerikSldDockHeader--vars {
+  margin-top: 12px;
 }
 
 // Monospace, and the value right-aligned in a fixed column: a readout that

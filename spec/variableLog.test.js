@@ -1,6 +1,7 @@
 const {
-    noteVariableChanges, variablesAt, sortVariableNames, GLOBAL_SCOPE,
+    noteVariableChanges, variablesAt, sortVariableNames, formatVariableValue, GLOBAL_SCOPE,
 } = require('../lib/variableLog');
+const { STRING_SPACE_SENTINEL } = require('../lib/utils');
 
 // A store as the parser keeps it: {name: {name, type, value}}.
 const store = (values) => Object.fromEntries(
@@ -207,5 +208,42 @@ describe('sortVariableNames', () => {
 
     test('nothing to sort', () => {
         expect(sortVariableNames([])).toEqual([]);
+    });
+});
+
+describe('formatVariableValue', () => {
+    // A coordinate is always a length to a fixed resolution; a variable holds
+    // whatever the program put in it, and an INT shown as 12.000 is noise.
+    test('a number reads as it is written', () => {
+        expect(formatVariableValue(12)).toBe('12');
+        expect(formatVariableValue(0)).toBe('0');
+        expect(formatVariableValue(30.5)).toBe('30.5');
+        expect(formatVariableValue(-2.25)).toBe('-2.25');
+    });
+
+    test('the float noise of arithmetic is rounded away', () => {
+        expect(formatVariableValue(0.1 + 0.2)).toBe('0.3');
+        expect(formatVariableValue(1 / 3)).toBe('0.333333');
+    });
+
+    // A string is held with its inner spaces masked through the whole
+    // interpreter; the panel is a leaf where it leaves, so it is unmasked.
+    test('a string comes back with its spaces', () => {
+        const masked = 'HELLO' + STRING_SPACE_SENTINEL + 'WORLD';
+        expect(formatVariableValue(masked)).toBe('HELLO WORLD');
+        expect(formatVariableValue('PLAIN')).toBe('PLAIN');
+    });
+
+    // Declared with no value, which is not the same as not existing — the panel
+    // is never asked about one that does not exist.
+    test('no value at all is said so', () => {
+        expect(formatVariableValue(undefined)).toBe('—');
+        expect(formatVariableValue(null)).toBe('—');
+    });
+
+    test('a value that is not a number is shown rather than hidden', () => {
+        expect(formatVariableValue(NaN)).toBe('NaN');
+        expect(formatVariableValue(Infinity)).toBe('Infinity');
+        expect(formatVariableValue(true)).toBe('true');
     });
 });

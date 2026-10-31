@@ -43,6 +43,7 @@ function makeParseData() {
         variablesSeen: {'*': {R1: 5}},
         variablesDirty: new Set(['R1']),
         variablesScanAll: false,
+        variableAt: 17,
         inShapeParse: false,
         axesPos: {X: 150, Y: 0, Z: -42},
         pole: {X: 1, Y: 2, Z: 3, AP: 4, RP: 5},

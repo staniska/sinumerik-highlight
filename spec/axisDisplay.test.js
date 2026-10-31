@@ -1,4 +1,4 @@
-const { displayCoordinate, decimalsFor, positionAt, storedValue } = require('../lib/axisDisplay');
+const { displayCoordinate, decimalsFor, positionAt, storedValue, blockIndexAt } = require('../lib/axisDisplay');
 
 const move = (over = {}) => ({type: 'G1', X_start: 0, Y_start: 0, Z_start: 0, X: 1, Y: 2, Z: 3, ...over});
 const msg = () => ({type: 'msg', value: 'HELLO'});
@@ -96,6 +96,53 @@ describe('positionAt', () => {
         expect(positionAt(undefined, 3)).toBe(null);
         expect(positionAt([msg(), pause()], 2)).toBe(null);
         expect(positionAt([msg()], 0)).toBe(null);
+    });
+});
+
+describe('positionAt — which piece', () => {
+    test('the index of the piece is reported with it', () => {
+        const elements = [move(), msg(), move(), pause()];
+
+        expect(positionAt(elements, 4).index).toBe(2);
+        expect(positionAt(elements, 2).index).toBe(0);
+        expect(positionAt(elements, 0).index).toBe(0);
+    });
+
+    test('and skips a message when counting', () => {
+        const elements = [msg(), move()];
+        expect(positionAt(elements, 0).index).toBe(1);
+    });
+});
+
+describe('blockIndexAt', () => {
+    const elements = [move(), move(), move()];
+    // Three pieces cut from two blocks, as buildAnimationPieces would leave it.
+    const elementFrames = [0, 0, 1];
+
+    test('the block the piece was cut from', () => {
+        expect(blockIndexAt(positionAt(elements, 1), elementFrames, 1, 3)).toBe(0);
+        expect(blockIndexAt(positionAt(elements, 2), elementFrames, 2, 3)).toBe(0);
+    });
+
+    // With slow debug off there are no pieces: the list IS the blocks.
+    test('without a map, a piece is its own block', () => {
+        expect(blockIndexAt(positionAt(elements, 2), null, 2, 3)).toBe(1);
+        expect(blockIndexAt(positionAt(elements, 2), undefined, 2, 3)).toBe(1);
+    });
+
+    // An assignment after the last move has no element behind which to be seen,
+    // so a value set on the program's last line would never show.
+    test('everything drawn is the final state', () => {
+        expect(blockIndexAt(positionAt(elements, 3), elementFrames, 3, 3)).toBe(Infinity);
+        expect(blockIndexAt(positionAt(elements, 9), elementFrames, 9, 3)).toBe(Infinity);
+    });
+
+    test('nothing drawn is the first block, not the final state', () => {
+        expect(blockIndexAt(positionAt(elements, 0), elementFrames, 0, 3)).toBe(0);
+    });
+
+    test('nowhere to stand', () => {
+        expect(blockIndexAt(null, elementFrames, 1, 3)).toBe(null);
     });
 });
 
