@@ -37,7 +37,12 @@ Displays an approximate toolpath for the active program. Press `Ctrl + Alt + R` 
 - **Pin mode** — lock the SLD to a specific file while navigating subroutines. A suggestion to unpin appears when switching to an unrelated file.
 
 Blank and part contours can be programmed as G-code files and drawn on the canvas.
-Default names: `BLANK.MPF` and `CONTOUR.MPF`.
+Default names: `BLANK.MPF` and `CONTOUR.MPF`. The three name fields offer the programs of the
+folder as you type.
+
+The **Blank** label is a switch. Clicked, it reads **IPS**, and the field then names not a shape
+file but the *previous program of the same part* — what that program leaves becomes this one's
+blank. See [Borrowing the previous program's stock](#borrowing-the-previous-programs-stock).
 
 Shapes (blank, contour) are always read from the saved file on disk, while the main program trajectory follows the live editor buffer. Editing a shape file and comparing the saved shape against the live trajectory makes the effect of every change immediately visible — save the file when the new shape is the one you want.
 
@@ -259,6 +264,39 @@ A program with no tool outline anywhere is refused rather than answered: an unto
 read as "this program removes nothing", which is not the same as "this program was not understood".
 A program where only some blocks lacked one is answered with a warning, since material still stands
 where those blocks cut.
+
+#### Borrowing the previous program's stock
+
+A part is often split across several programs — op10 roughs, op20 finishes, op30 works the other
+end. The blank of each is what the one before it left. Saving that as a file and naming the file by
+hand works until the first program is edited, after which the copy is wrong and says nothing about
+it.
+
+Click the **Blank** label to switch the row to **IPS** and name the previous program instead. Its
+stock is then computed when this one is parsed, and the chain can be any length: op30 borrows from
+op20, which borrows from op10, which has a blank of its own. Programs written before this existed
+are untouched — a program declares either a blank or a stock source, never both.
+
+Editing the previous program and **saving** it is enough: the blank here follows. An edit in the
+program you are looking at never recomputes anything, since that is a parse and a trace run of
+another program — seconds of work, not something to do between two keystrokes — so a source changed
+but not yet saved leaves the blank one press of Redraw behind and says so under the canvas. If the
+previous program is open with unsaved changes, you are asked once whether to take its stock from the
+editor or from the file on disk.
+
+The **sliders** button beside the field places that stock: an offset and a mirror per axis, for the
+usual case of the part being turned round between two operations. The offset is in the machine's own
+units and moves the stock in this program's datum; a mirror applies before it, so the number keeps
+its direction whatever the mirror does. An offset in X acts on the side, as it does on the machine.
+
+A program that parts off leaves several pieces. Press **IPS** there, pick the one it is about, and
+the choice is remembered in that program — every operation borrowing from it then gets that piece.
+Where one program feeds two — one takes the flange, the other the slug — the same button offers a
+piece of this program's own choosing. The choice is remembered as a shape rather than as a position
+in a list, so editing the source does not silently switch the piece; if it can no longer be
+identified, you are asked to choose again rather than given the nearest one.
+
+Turning only, like the trace it is computed from.
 
 ### Interpolation
 
