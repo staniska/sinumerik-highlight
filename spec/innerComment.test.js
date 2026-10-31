@@ -203,6 +203,24 @@ describe('loadDataFromComment units back-compat', () => {
         expect(data.contour).toEqual({ name: 'CONTOUR' });
     });
 
+    test('a recorded piece choice is loaded like any other field', () => {
+        // It is how a program that parts off says which piece it leaves, and it
+        // arrives the way `ips` does — every declared field, not a list of
+        // three.
+        const text = [
+            'N1 G0 X0',
+            BEGIN,
+            ';{"ipsPiece":{"a0min":-2,"a0max":18,"a1max":60}}',
+            END,
+        ].join('\n');
+        setEditor('/test/parted.mpf', text);
+
+        loadDataFromComment();
+
+        expect(View.sinumerikView.programmData['/test/parted.mpf'].ipsPiece)
+            .toEqual({a0min: -2, a0max: 18, a1max: 60});
+    });
+
     test('machine with an explicit units field is left untouched', () => {
         const text = [
             'N1 G0 X0',

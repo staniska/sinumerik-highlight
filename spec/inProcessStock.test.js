@@ -312,3 +312,59 @@ describe('the tolerance the contour is fitted to', () => {
         expect(outlineTolerance(0.4)).toBeCloseTo(0.6, 9);
     });
 });
+
+
+// The same tessellation feeds the picture of the stock and the blank a later
+// program borrows (ipsResolve.js), so the two cannot drift apart — and the
+// order its keys go in is load-bearing.
+describe('tessellating a piece into canvas elements', () => {
+    const {tessellate} = require('../lib/inProcessStock');
+
+    beforeEach(() => setup());
+
+    test('a line becomes one G1 in the axes of the turning plane', () => {
+        const out = tessellate([{type: 'line', start: [0, 10], end: [40, 25]}]);
+        expect(out.length).toBe(1);
+        expect(out[0]).toMatchObject({
+            type: 'G1',
+            Z_start: 0, X_start: 10, Y_start: 0,
+            Z: 40, X: 25, Y: 0,
+        });
+    });
+
+    test('the keys go in X, Y, Z order, as a real canvas element has them', () => {
+        // Several places in this package read axes back with
+        // `Object.keys(el).filter(...)`, which depends on insertion order. The
+        // grid's own pair is [Z, X], which would have put Z first.
+        const out = tessellate([{type: 'line', start: [0, 10], end: [40, 25]}]);
+        expect(Object.keys(out[0]))
+            .toEqual(['type', 'X_start', 'Y_start', 'Z_start', 'X', 'Y', 'Z']);
+    });
+
+    test('an arc comes back as chords that start and end where it does', () => {
+        const arc = {
+            type: 'arc',
+            start: [10, 0], end: [0, 10],
+            center: [0, 0], radius: 10, ccw: false,
+        };
+        const out = tessellate([arc]);
+
+        expect(out.length).toBeGreaterThan(2);
+        expect(out[0].Z_start).toBeCloseTo(10, 9);
+        expect(out[0].X_start).toBeCloseTo(0, 9);
+        expect(out.at(-1).Z).toBeCloseTo(0, 9);
+        expect(out.at(-1).X).toBeCloseTo(10, 9);
+        // Every chord lands on the circle, and they join end to start.
+        out.forEach(el => {
+            expect(Math.hypot(el.Z, el.X)).toBeCloseTo(10, 6);
+        });
+        out.slice(1).forEach((el, i) => {
+            expect(el.Z_start).toBeCloseTo(out[i].Z, 9);
+            expect(el.X_start).toBeCloseTo(out[i].X, 9);
+        });
+    });
+
+    test('nothing to tessellate is an empty list', () => {
+        expect(tessellate([])).toEqual([]);
+    });
+});
