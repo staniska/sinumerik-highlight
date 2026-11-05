@@ -297,6 +297,16 @@ but not yet saved leaves the blank one press of Redraw behind and says so under 
 previous program is open with unsaved changes, you are asked once whether to take its stock from the
 editor or from the file on disk.
 
+A source needs a machine to be parsed at all, and a part split across three operations is made on one
+machine — so if the previous program's auto-comment names none, you are offered the machine of the
+program you are looking at. The offer names it, with its type and its units, because those are what
+make a borrowed machine the wrong one: a program for another machine that merely carries no comment
+would be traced with the wrong tool list, the wrong units and the wrong subroutine folders. Cancel
+leaves the stock uncomputed, as before. Either answer is remembered for the session and for that file
+alone; **saving** that file asks again, which is also how a mistaken Cancel is taken back. The
+borrowed machine is only lent for the length of the computation — open the previous program and it
+still shows no machine of its own.
+
 The **sliders** button beside the field places that stock: an offset and a mirror per axis, for the
 usual case of the part being turned round between two operations. The offset is in the machine's own
 units and moves the stock in this program's datum; a mirror applies before it, so the number keeps

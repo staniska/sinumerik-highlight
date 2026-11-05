@@ -3,11 +3,17 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
+jest.mock('../lib/dialog/confirm', () => ({
+    confirmDialog: jest.fn(),
+}));
+
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { classifyInputs, signatureOf, programsFor, programNamesFor } = require('../lib/ipsResolve');
+const { classifyInputs, signatureOf, programsFor, programNamesFor,
+    sourceMachine, withSourceMachine } = require('../lib/ipsResolve');
+const { confirmDialog } = require('../lib/dialog/confirm');
 const View = require('../lib/sinumerik').default;
 
 describe('classifyInputs', () => {
@@ -240,5 +246,141 @@ describe('programsFor', () => {
         return programNamesFor(path.join(own, 'TURN_3.MPF'), true).then(names => {
             expect(names).toEqual(['TURN_3', 'ZAGOT']);
         });
+    });
+});
+
+// A source that declares no machine may use the machine of the program being
+// drawn, asked once per source. Both halves are exported for this: the decision,
+// and the loan that keeps a borrowed machine out of `programmData` for good.
+//
+// The answer is module state that lives for the session, so each test asks about
+// a source of its own rather than resetting the module — which is also how the
+// real thing is used: one answer per file, for as long as Pulsar is open.
+describe('borrowing the drawn program\'s machine', () => {
+    const LATHE1 = {machineName: 'LATHE1', machineType: 'Lathe', units: 'metric'};
+    const MILL = {machineName: 'MILL', machineType: 'Mill', units: 'inch'};
+    const asked = () => ({ask: true, rootMachine: LATHE1});
+
+    beforeEach(() => {
+        confirmDialog.mockReset();
+        confirmDialog.mockReturnValue(true);
+    });
+
+    test('a source with a machine of its own is not asked about', () => {
+        expect(sourceMachine('/p/declared.MPF', {machine: MILL}, asked())).toBe(MILL);
+        expect(confirmDialog).not.toHaveBeenCalled();
+    });
+
+    test('accepted once, then used without asking again', () => {
+        const store = {};
+
+        expect(sourceMachine('/p/accepted.MPF', store, asked())).toBe(LATHE1);
+        expect(sourceMachine('/p/accepted.MPF', store, asked())).toBe(LATHE1);
+        expect(confirmDialog).toHaveBeenCalledTimes(1);
+    });
+
+    // The machine it offers is named, with the two things that make a borrowed
+    // one the wrong one.
+    test('the offer names the machine, its type and its units', () => {
+        sourceMachine('/p/named.MPF', {}, asked());
+
+        const text = confirmDialog.mock.calls[0][0];
+        expect(text).toContain('named.MPF');
+        expect(text).toContain('LATHE1');
+        expect(text).toContain('Lathe');
+        expect(text).toContain('metric');
+    });
+
+    test('a refusal is remembered too, so a redraw does not ask again', () => {
+        confirmDialog.mockReturnValue(false);
+
+        expect(sourceMachine('/p/refused.MPF', {}, asked())).toBeNull();
+        expect(sourceMachine('/p/refused.MPF', {}, asked())).toBeNull();
+        expect(confirmDialog).toHaveBeenCalledTimes(1);
+    });
+
+    test('the answer is per source, not one for all of them', () => {
+        sourceMachine('/p/each-A.MPF', {}, asked());
+        sourceMachine('/p/each-B.MPF', {}, asked());
+
+        expect(confirmDialog).toHaveBeenCalledTimes(2);
+    });
+
+    // The pre-pass runs before every parse, so the path a keystroke takes must
+    // not raise a dialog. Unanswered, the source stays without a machine.
+    test('nothing is asked when asking is not allowed', () => {
+        expect(sourceMachine('/p/quiet.MPF', {}, {ask: false, rootMachine: LATHE1})).toBeNull();
+        expect(confirmDialog).not.toHaveBeenCalled();
+    });
+
+    // There is nothing to offer, so there is nothing to ask.
+    test('no machine on the program being drawn, no offer', () => {
+        expect(sourceMachine('/p/noroot.MPF', {}, {ask: true, rootMachine: null})).toBeNull();
+        expect(sourceMachine('/p/noroot.MPF', {}, {ask: true, rootMachine: {}})).toBeNull();
+        expect(confirmDialog).not.toHaveBeenCalled();
+    });
+
+    // The answer means "use whatever the drawn program has", so the machine is
+    // read again every time: switching the drawn program to another machine
+    // carries through, and the cache signature changes with it.
+    test('the answer is remembered, the machine it meant is not', () => {
+        const store = {};
+
+        expect(sourceMachine('/p/switch.MPF', store, asked())).toBe(LATHE1);
+        expect(sourceMachine('/p/switch.MPF', store, {ask: false, rootMachine: MILL})).toBe(MILL);
+        expect(confirmDialog).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the machine loan', () => {
+    const LATHE1 = {machineName: 'LATHE1'};
+
+    // `programmData` is shared with the editor's own view of that file, so a key
+    // the source never had must not be left behind: opening op10 would then show
+    // a machine it never declared, and its own trace would run on it.
+    test('a key the source did not have is gone again afterwards', async () => {
+        const store = {blank: {name: 'BLANK'}};
+
+        await withSourceMachine(store, LATHE1, async () => {
+            expect(store.machine).toBe(LATHE1);
+        });
+
+        expect('machine' in store).toBe(false);
+        expect(store.blank).toEqual({name: 'BLANK'});
+    });
+
+    test('a machine the source did have comes back', async () => {
+        const own = {machineName: 'MILL'};
+        const store = {machine: own};
+
+        await withSourceMachine(store, LATHE1, async () => {
+            expect(store.machine).toBe(LATHE1);
+        });
+
+        expect(store.machine).toBe(own);
+    });
+
+    // A failure deeper in the resolve throws out of here, and a machine left
+    // behind by it would be the permanent contamination this exists to avoid.
+    test('a throw does not leave the machine behind', async () => {
+        const store = {};
+
+        await expect(withSourceMachine(store, LATHE1, async () => {
+            throw new Error('tool file unreadable');
+        })).rejects.toThrow('tool file unreadable');
+
+        expect('machine' in store).toBe(false);
+    });
+
+    test('the source\'s own machine is no loan at all', async () => {
+        const store = {machine: LATHE1};
+
+        await withSourceMachine(store, LATHE1, async () => {});
+
+        expect(store.machine).toBe(LATHE1);
+    });
+
+    test('what the body returns is what comes back', async () => {
+        expect(await withSourceMachine({}, LATHE1, async () => 'answer')).toBe('answer');
     });
 });
