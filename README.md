@@ -38,7 +38,10 @@ Displays an approximate toolpath for the active program. Press `Ctrl + Alt + R` 
 
 Blank and part contours can be programmed as G-code files and drawn on the canvas.
 Default names: `BLANK.MPF` and `CONTOUR.MPF`. The three name fields offer the programs of the
-folder as you type.
+folder as you type — including the file being edited, which is a legitimate blank or contour for
+itself: the shape comes off the disk while the trajectory comes off the buffer, so the file draws
+the edits in hand over the version it was last saved as. In **IPS** mode its own name is not
+offered, since a program cannot borrow stock from itself.
 
 The **Blank** label is a switch. Clicked, it reads **IPS**, and the field then names not a shape
 file but the *previous program of the same part* — what that program leaves becomes this one's

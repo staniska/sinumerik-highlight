@@ -218,12 +218,27 @@ describe('programsFor', () => {
         });
     });
 
-    test('the program itself is not suggested as its own blank', () => {
+    // The default is the strict one, which is what the IPS mode of the Blank
+    // field wants: a program cannot borrow stock from itself.
+    test('the program itself is not suggested as its own stock source', () => {
         write(own, 'TURN_3.MPF');
         write(own, 'ZAGOT.MPF');
 
         return programNamesFor(path.join(own, 'TURN_3.MPF')).then(names => {
             expect(names).toEqual(['ZAGOT']);
+        });
+    });
+
+    // And the relaxed one, for a blank or a contour. A shape is read from disk
+    // while the trajectory is read from the buffer, so a file that names itself
+    // draws the edits in hand over the version last saved — the one case where
+    // the field's own program is the answer wanted.
+    test('the program itself is suggested when the field can take it', () => {
+        write(own, 'TURN_3.MPF');
+        write(own, 'ZAGOT.MPF');
+
+        return programNamesFor(path.join(own, 'TURN_3.MPF'), true).then(names => {
+            expect(names).toEqual(['TURN_3', 'ZAGOT']);
         });
     });
 });
