@@ -24,6 +24,8 @@ const {
     toolCornerArc,
     noseOf,
     materialTraceGougeRects,
+    materialTraceThreadRects,
+    materialTraceThreadPartialRects,
     worstGouge,
     worstRapid,
     worstOffContour,
@@ -945,7 +947,9 @@ describe('keyframes earn their keep', () => {
         const st = advanceMaterialTrace(els, els.length);
 
         const actual = st.snapshots.reduce(
-            (n, snap) => n + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0), 0);
+            (n, snap) => n
+                + snap.runs.reduce((m, run) => m + 24 + run.bounds.byteLength, 0)
+                + (snap.threadRuns ? snap.threadRuns.length * 40 : 0), 0);
         expect(st.bytes).toBe(actual);
     });
 
@@ -2463,5 +2467,374 @@ describe('advancing under a time budget', () => {
     test('nothing is owed before the trace exists', () => {
         resetMaterialTrace();
         expect(materialTraceOwed(500)).toBe(0);
+    });
+});
+
+// ─── thread cutting ──────────────────────────────────────────────────────────
+
+describe('a thread block marks the part instead of cutting it', () => {
+    // The contour is drawn as full material, with no thread in it, so a thread
+    // block must take nothing off — and must still be a real move with a real
+    // tool on it. Marks are fractions along the block; the parser puts them
+    // there (lib/threadMarks.js).
+    const thread = (marks, extra = {}) => ({
+        ...g1(2, 9, 8, 9),
+        type: 'G33',
+        thread: {kind: 'G33', axis: 'Z', pitch: 2, pitchChange: 0, turns: marks.length - 1, marks},
+        thread_from: 0,
+        thread_to: 1,
+        ...extra,
+    });
+
+    beforeEach(() => setup());
+
+    test('nothing is removed, and it is counted as a thread rather than skipped', () => {
+        const st = advanceMaterialTrace([thread([0, 0.5, 1])], 1);
+
+        expect(st.status).toBe('ok');
+        expect(st.removed).toBe(0);
+        expect(materialTraceRects()).toEqual([]);
+        expect(st.threaded).toBe(1);
+        expect(st.swept).toBe(0);
+        expect(st.skippedTool).toBe(0);
+    });
+
+    test('the blue trace is the edge against the material, turn by turn', () => {
+        advanceMaterialTrace([thread([0, 0.5, 1])], 1);
+        const rects = materialTraceThreadRects();
+
+        expect(rects.length).toBeGreaterThan(0);
+        // The outline spans two millimetres from the reference point in both
+        // axes, so against a bar of radius 10 standing at X9 it can only mark
+        // the one millimetre that is there.
+        rects.forEach(r => {
+            expect(r.a1lo).toBeCloseTo(9, 6);
+            expect(r.a1hi).toBeCloseTo(10, 6);
+            expect(r.a0lo).toBeGreaterThanOrEqual(2 - 1e-9);
+            expect(r.a0hi).toBeLessThanOrEqual(10 + 1e-9);
+        });
+    });
+
+    test('a turn standing where no material is left leaves no mark', () => {
+        // Clear of the bar entirely: the trace is an intersection with the
+        // material, not a picture of the path.
+        advanceMaterialTrace([thread([0, 1], {X_start: 30, X: 30})], 1);
+
+        expect(materialTraceThreadRects()).toEqual([]);
+    });
+
+    test('the marks of the turns are what the trace is made of', () => {
+        advanceMaterialTrace([thread([0, 0.5, 1])], 1);
+        const three = materialTraceThreadRects().length;
+        resetMaterialTrace();
+        advanceMaterialTrace([thread([0, 1])], 1);
+
+        expect(materialTraceThreadRects().length).toBeLessThan(three);
+    });
+
+    test('a block with no marks paints nothing', () => {
+        advanceMaterialTrace([thread([])], 1);
+
+        expect(materialTraceThreadRects()).toEqual([]);
+    });
+
+    test('it is never a gouge, however deep into the part it goes', () => {
+        // The part fills the whole bar, so a cut here would be a gouge at once.
+        setup({blank: bar(0, 20, 10)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 10);
+        const st = advanceMaterialTrace([thread([0, 0.5, 1])], 1);
+
+        expect(st.gouges).toEqual([]);
+        expect(worstGouge()).toBeNull();
+        expect(materialTraceGougeRects()).toEqual([]);
+    });
+
+    test('the holder is still checked — a thread pass runs into a shoulder too', () => {
+        setup({toolGeometry: {
+            sections: [
+                {role: 'cut', shapes: toolGeometry().sections[0].shapes, elements: []},
+                // Reaching back over the bar, which is still whole: a thread
+                // removes nothing, so nothing excuses the holder either.
+                {role: 'body', shapes: [
+                    g1(0, 0, 0, -8), g1(0, -8, 6, -8), g1(6, -8, 6, 0), g1(6, 0, 0, 0),
+                ], elements: []},
+            ],
+        }});
+        const st = advanceMaterialTrace([thread([0, 1])], 1);
+
+        expect(st.collisions.length).toBe(1);
+        expect(worstCollision().depth).toBeGreaterThan(0);
+    });
+
+    // A grooving blade threading deeper than the insert is tall. The blade is
+    // in the groove it has just cut; the grid cannot know, because a thread is
+    // deliberately not subtracted from it.
+    const bladeTool = (height) => ({
+        sections: [
+            {role: 'cut', shapes: [
+                g1(0, 0, 1, 0), g1(1, 0, 1, height), g1(1, height, 0, height), g1(0, height, 0, 0),
+            ], elements: []},
+            // Directly above the insert and the same width: the blade.
+            {role: 'body', shapes: [
+                g1(0, height, 1, height), g1(1, height, 1, height + 20),
+                g1(1, height + 20, 0, height + 20), g1(0, height + 20, 0, height),
+            ], elements: []},
+        ],
+    });
+
+    test('once the thread is deeper than the insert, the blade is not a strike', () => {
+        // Insert 1 mm tall, thread cut to 2 mm deep: the blade is a millimetre
+        // under the surface for the whole pass, and every pass used to report
+        // a holder strike along the entire thread.
+        setup({toolGeometry: bladeTool(1)});
+        const deep = {...thread([0, 0.4, 0.8]), X_start: 8, X: 8};
+        const st = advanceMaterialTrace([deep], 1);
+
+        expect(st.threaded).toBe(1);
+        expect(st.collisions).toEqual([]);
+    });
+
+    test('a holder wider than the groove it cut still strikes', () => {
+        // Which is the rule the channel has to meet: a blade fits in the groove
+        // it cut, a holder that overhangs it does not. The body here reaches
+        // three millimetres back and three forward of the insert, so its ends
+        // are outside the channel at both ends of the pass.
+        setup({toolGeometry: {
+            sections: [
+                {role: 'cut', shapes: [
+                    g1(0, 0, 1, 0), g1(1, 0, 1, 1), g1(1, 1, 0, 1), g1(0, 1, 0, 0),
+                ], elements: []},
+                {role: 'body', shapes: [
+                    g1(-3, 1, 4, 1), g1(4, 1, 4, 21), g1(4, 21, -3, 21), g1(-3, 21, -3, 1),
+                ], elements: []},
+            ],
+        }});
+        const st = advanceMaterialTrace([{...thread([0, 0.4, 0.8]), X_start: 8, X: 8}], 1);
+
+        expect(st.collisions.length).toBe(1);
+    });
+
+    // A probe with a holder and no cutting section: it removes nothing and is
+    // only ever judged against the material. Its own tool file, because the
+    // thread block beside it keeps using the blade.
+    const PROBE_PATH = '/t/probe.mpf';
+    const withProbe = (height) => {
+        setup({toolGeometry: bladeTool(height)});
+        View.sinumerikView.toolGeometry[PROBE_PATH] = {
+            sections: [{role: 'body', shapes: [
+                g1(0, 8, 0.5, 8), g1(0.5, 8, 0.5, 9), g1(0.5, 9, 0, 9), g1(0, 9, 0, 8),
+            ], elements: []}],
+        };
+    };
+    const probe = (z0, z1) => ({...g1(z0, 0, z1, 0), toolDef: {name: 'PROBE', path: PROBE_PATH}});
+    const cutPass = () => ({...thread([0, 0.4, 0.8]), X_start: 8, X: 8});
+    // What really follows a thread: the tool climbing out of the groove. Exempt
+    // from every judgement, so the blocks under test have to come after it.
+    const retract = () => ({...g1(8, 8, 8, 20), type: 'G0', toolDef: {name: 'TURN35', path: TOOL_PATH}});
+
+    test('an ordinary block crossing the thread strikes the crests between the turns', () => {
+        // The excuse for anything but the thread itself is what the thread
+        // REMOVED — the blue. A crest stands between two turns and is metal at
+        // every angle of the spindle, so a holder crossing it meets it.
+        withProbe(1);
+        const st = advanceMaterialTrace([cutPass(), retract(), probe(2, 8)], 3);
+
+        expect(st.collisions.length).toBe(1);
+        expect(st.collisions[0].at).toBe(2);
+    });
+
+    test('and strikes inside a cut turn too, because a turn is a spiral', () => {
+        // The blue is where the edge met metal at ONE angle of the spindle. The
+        // metal is still there at the rest, so the part is whole to everything
+        // but the thread block itself.
+        withProbe(1);
+        // Inside the first turn's mark, which the blade cut from Z2 to Z3.
+        const st = advanceMaterialTrace([cutPass(), retract(), probe(2, 2.5)], 3);
+
+        expect(st.collisions.length).toBe(1);
+        expect(st.collisions[0].at).toBe(2);
+    });
+
+    test('a block that cuts into the part inside the thread zone is a gouge', () => {
+        // The thread leaves the grid untouched, so an ordinary block cutting
+        // there meets the part exactly as it stands — and the contour holds no
+        // thread, so going below it is a gouge like anywhere else.
+        setup({toolGeometry: bladeTool(1)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 9.5);
+        const els = [cutPass(), retract(), {...g1(2, 8, 8, 8), toolDef: {name: 'TURN35', path: TOOL_PATH}}];
+        const st = advanceMaterialTrace(els, 3);
+
+        expect(st.partKnown).toBe(true);
+        expect(st.gouges.length).toBe(1);
+        expect(st.gouges[0].at).toBe(2);
+        expect(worstGouge().depth).toBeGreaterThan(0.5);
+        expect(materialTraceGougeRects().length).toBeGreaterThan(0);
+    });
+
+    test('and the thread block itself is still not one', () => {
+        setup({toolGeometry: bladeTool(1)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 9.5);
+        const st = advanceMaterialTrace([cutPass()], 1);
+
+        expect(st.gouges).toEqual([]);
+    });
+
+    test('the block right after a thread is the retract and is judged by nothing', () => {
+        // In this plane it climbs out through metal — the thread was never
+        // subtracted — so it would report a strike, a gouge and a rapid on
+        // every pass. On the machine it leaves at the angle of the helix.
+        setup({toolGeometry: bladeTool(1)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 9.5);
+        // Straight into the part and out again, with a tool that cuts.
+        const bad = {...g1(5, 8, 5, 20), type: 'G0', toolDef: {name: 'TURN35', path: TOOL_PATH}};
+        const st = advanceMaterialTrace([cutPass(), bad], 2);
+
+        expect(st.collisions).toEqual([]);
+        expect(st.gouges).toEqual([]);
+        expect(st.rapids).toEqual([]);
+        // And it removes nothing, so the stock the next block is judged
+        // against is still the stock.
+        expect(st.removed).toBe(0);
+        expect(st.threaded).toBe(2);
+    });
+
+    test('the block after the retract is judged again', () => {
+        setup({toolGeometry: bladeTool(1)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 9.5);
+        const els = [cutPass(), retract(), {...g1(2, 8, 8, 8), toolDef: {name: 'TURN35', path: TOOL_PATH}}];
+        const st = advanceMaterialTrace(els, 3);
+
+        expect(st.gouges.length).toBe(1);
+        expect(st.gouges[0].at).toBe(2);
+    });
+
+    test('a message between the thread and its retract does not spend the exemption', () => {
+        setup({toolGeometry: bladeTool(1)});
+        View.sinumerikView.parseData.contour = bar(0, 20, 9.5);
+        const bad = {...g1(5, 8, 5, 20), type: 'G0', toolDef: {name: 'TURN35', path: TOOL_PATH}};
+        const st = advanceMaterialTrace([cutPass(), {type: 'msg', value: 'hi'}, bad], 3);
+
+        expect(st.gouges).toEqual([]);
+        expect(st.removed).toBe(0);
+    });
+
+    test('stepping back takes the trace off again', () => {
+        const els = [g1(0, 11, 0, 9), thread([0, 0.5, 1])];
+        advanceMaterialTrace(els, 2);
+        expect(materialTraceThreadRects().length).toBeGreaterThan(0);
+
+        advanceMaterialTrace(els, 1);
+        expect(materialTraceThreadRects()).toEqual([]);
+
+        advanceMaterialTrace(els, 2);
+        expect(materialTraceThreadRects().length).toBeGreaterThan(0);
+    });
+
+    test('a keyframe carries it, so a rewind the undo log cannot cover restores it', () => {
+        // One thread block, then enough cutting to earn keyframes. Rewinding
+        // past the log falls through to the keyframe path, and the thread has
+        // to be in the keyframe or it comes back as an empty trace.
+        const passes = [];
+        for (let p = 0; p < 120; p++) {
+            const r = 9.5 - p * 0.05;
+            passes.push(g1(18, r, 2, r));
+        }
+        const els = [thread([0, 0.5, 1]), ...passes];
+        advanceMaterialTrace(els, els.length);
+        const painted = materialTraceThreadRects().length;
+        expect(painted).toBeGreaterThan(0);
+
+        const st = materialTraceState();
+        expect(st.snapshots.length).toBeGreaterThan(0);
+        const snap = st.snapshots[st.snapshots.length - 1];
+        // Past the log on purpose, so the only way back is the keyframe.
+        st.undo = [];
+        st.undoEntries = 0;
+        advanceMaterialTrace(els, snap.at);
+
+        expect(st.appliedUpTo).toBe(snap.at);
+        expect(materialTraceThreadRects().length).toBe(painted);
+    });
+
+    test('a rebuild from the blank replays the thread as well', () => {
+        const els = [thread([0, 0.5, 1]), g1(18, 9, 2, 9)];
+        advanceMaterialTrace(els, els.length);
+        const painted = materialTraceThreadRects().length;
+
+        const st = materialTraceState();
+        st.undo = [];
+        st.undoEntries = 0;
+        st.snapshots = [];
+        advanceMaterialTrace(els, 1);
+
+        expect(materialTraceThreadRects().length).toBe(painted);
+    });
+
+    test('the turns show as the tool reaches them, not all at the end of the pass', () => {
+        setup();
+        const els = [thread([0, 0.4, 0.8])];
+        advanceMaterialTrace(els, 0);
+
+        setPartialFrame({index: 0, fraction: 0.5});
+        const half = materialTraceThreadPartialRects();
+        expect(half.length).toBeGreaterThan(0);
+        const halfEnd = Math.max(...half.map(r => r.a0hi));
+
+        setPartialFrame({index: 0, fraction: 0.9});
+        const most = materialTraceThreadPartialRects();
+        expect(Math.max(...most.map(r => r.a0hi))).toBeGreaterThan(halfEnd);
+
+        // And none of it is written down: the applied layer is still empty.
+        expect(materialTraceThreadRects()).toEqual([]);
+        setPartialFrame(null);
+        expect(materialTraceThreadPartialRects()).toEqual([]);
+    });
+
+    test('a block that is not a thread shows no turns', () => {
+        setup();
+        advanceMaterialTrace([g1(2, 9, 8, 9)], 0);
+        setPartialFrame({index: 0, fraction: 0.5});
+
+        expect(materialTraceThreadPartialRects()).toEqual([]);
+        setPartialFrame(null);
+    });
+
+    test('the retract being animated is not shown as cleared stock either', () => {
+        // Mid-block the overlay would clear the stock and the stock would come
+        // back the moment the block landed, with no error to explain it.
+        setup({toolGeometry: bladeTool(1)});
+        const bad = {...g1(5, 8, 5, 20), type: 'G0', toolDef: {name: 'TURN35', path: TOOL_PATH}};
+        advanceMaterialTrace([cutPass(), bad], 1);
+        setPartialFrame({index: 1, fraction: 0.5});
+
+        expect(materialTracePartialRects()).toEqual([]);
+        setPartialFrame(null);
+    });
+
+    test('the block being animated is not shown as cleared stock', () => {
+        // The overlay is painted in the cleared-stock colour, so a thread pass
+        // would erase the part while it animates and put it back when applied.
+        const els = [thread([0, 0.5, 1])];
+        advanceMaterialTrace(els, 0);
+        setPartialFrame({index: 0, fraction: 0.5});
+
+        expect(materialTracePartialRects()).toEqual([]);
+        setPartialFrame(null);
+    });
+
+    test('with no tool outline it is a thread, not a block the trace failed on', () => {
+        setup({toolGeometry: null});
+        const st = advanceMaterialTrace([thread([0, 1])], 1);
+
+        expect(st.threaded).toBe(1);
+        expect(st.skippedTool).toBe(0);
+        expect(materialTraceThreadRects()).toEqual([]);
+    });
+
+    test('the report says how many blocks ran as a thread', () => {
+        advanceMaterialTrace([thread([0, 1])], 1);
+
+        expect(materialTraceReport().threaded).toBe(1);
+        expect(describeMaterialTrace()).toEqual([]);
     });
 });

@@ -335,11 +335,59 @@ Circular interpolation:
 - end point + AR
 - center point + AR
 
+### Thread cutting (G33, G34, G35)
+
+A thread block is drawn apart from an ordinary move: its line is pale, and a
+point is placed on it at every turn of the thread, so at any zoom it is plain
+where the edge has already been. The pitch comes from the vector of the plane —
+`K` along Z, `I` along X, `J` along Y — and for a taper it has to be given for
+the axis that travels furthest, as the control requires; a 45° taper accepts
+either. `SF` offsets the start of the count, which is what sets the starts of a
+multi-start thread apart from one another. `G34` and `G35` raise and lower the
+pitch along the block, by the change in mm/rev² written as `F` — on those two
+blocks `F` is not a feedrate and the program's own feed is left alone.
+
+The phase carries across a chain of thread blocks, so the run-out of a thread
+continues the turns of the thread itself rather than starting them again;
+anything that moves and is not a thread ends the chain.
+
+**A thread removes no material.** The contour of a part is drawn as full
+material with no thread in it, so cutting one would be reported as a gouge on
+every pass. Instead, where the geometry of the tool is known, the trace paints
+in blue what the edge actually met at each turn — the intersection of the
+outline with the stock as it stands. In slow debug the blue follows the pass
+turn by turn, because the block is cut into animation pieces at its own turns,
+which also keeps the tool drawn standing in the groove rather than hanging
+between two of them.
+
+The holder is still checked for collision — a thread pass runs into a shoulder
+like any other — with two exceptions:
+
+- The thread block itself is forgiven the channel its own edge has swept: its
+  blade rides inside the helix it is cutting. A holder wider than the groove is
+  not forgiven, and neither is the shoulder at the end of the thread, the chuck,
+  or a step between two threads. Nothing else is forgiven anywhere: a turn is a
+  spiral, so to every other block the part is whole, blue trace or not.
+- The block right after a thread is the retract, and it is judged by nothing and
+  cuts nothing. In this plane it climbs out through metal and would report a
+  strike, a gouge and a rapid on every pass; on the machine it leaves at the
+  angle of the helix. A retract that really does go into the part is caught by
+  the block after it.
+
+Machining time counts one revolution per turn at the spindle speed, which is
+what a thread runs at.
+
+Only in the WebGL renderer. A thread is never cut under `G41`/`G42`, and writing
+it is an error; so is a corner or an arc word in the same block, a pitch given
+for an axis the block does not move, and a `G35` whose pitch would reach zero
+before the end point. `G331`/`G332` (tapping) are not supported.
+
 ### Supported features
 
 - Polar coordinates (AP, RP)
 - Rounding between two lines, a line and an arc, or two arcs: one-shot (RND) or modal (RNDM, applies to every following corner until RNDM=0). A radius too large for the corner is reduced to the largest that fits, with a warning
 - Chamfer between lines: per-edge trim distance (CHR) or diagonal length (CHF)
+- Thread cutting: G33 (constant pitch), G34 / G35 (progressive and degressive pitch), with SF — see above
 - DIAMON / DIAMOF / DIAM90
 - G70 / G700 (inch) and G71 / G710 (metric) — mid-program unit switching; the machine's own unit setting is the default when neither appears
 - [A]TRANS, [A]ROT & [A]MIRROR

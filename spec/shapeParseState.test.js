@@ -55,6 +55,8 @@ function makeParseData() {
         transformation: {kind: 'mirror'},
         moveBeforeTransform: {type: 'G1'},
         moveGroup: 'G1',
+        threadPhase: 0.25,
+        threadG96Reported: true,
         primitives: ['program primitive'],
         errors: [{text: 'pre-existing program error'}],
         elementIdCounter: 77,
@@ -140,6 +142,8 @@ function trashEverything(pd) {
     pd.transformation = {kind: 'scale'};
     pd.moveBeforeTransform = {type: 'G0'};
     pd.moveGroup = 'G0';
+    pd.threadPhase = 0.75;
+    pd.threadG96Reported = false;
     pd.primitives.push('tool primitive');
     pd.errors.push({text: 'error from the tool file'});
     pd.elementIdCounter = 500;

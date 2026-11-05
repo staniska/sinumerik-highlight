@@ -369,11 +369,19 @@
   // Where the HOLDER met stock that was still there. Above everything: a gouge
   // spoils the part, a holder strike breaks the machine.
   --crash-color: darkviolet;
+  // Thread cutting (G33/G34/G35). The trajectory is drawn PALE: a thread block
+  // removes no material and must not read like a cut. The marks of its
+  // revolutions, and the trace they leave on the part, share the solid tone —
+  // one colour, because they are one statement about the same turns.
+  --thread-line-color: #a8c7f0;
+  --thread-color: royalblue;
   --axes-color: fade(@syntax-text-color, 50%);
   --axes-text-color: fade(@syntax-text-color, 80%);
   & when (lightness(@base-background-color) < 50%) {
     --blank-color: #7e8290;
     --contour-color: #545862;
+    --thread-line-color: #3b5a87;
+    --thread-color: #6fa8ff;
   }
 }
 

@@ -224,6 +224,82 @@ describe('subdivideElement', () => {
     const move = (zs, z, extra = {}) =>
         ({type: 'G1', X_start: 0, Y_start: 0, Z_start: zs, X: 0, Y: 0, Z: z, ...extra});
 
+    test('a thread block hands every piece the slice of it that piece covers', () => {
+        // The marks of a thread sit at whole revolutions measured from the
+        // BLOCK's start, so a piece has to know where in the block it is. A
+        // fraction rather than a count of revolutions: under G34/G35 the pitch
+        // changes along the block and the two are not proportional.
+        const thread = {kind: 'G33', axis: 'Z', pitch: 2, pitchChange: 0, turns: 50, marks: [0, 0.5, 1]};
+        const pieces = subdivideElement(move(0, -100, {thread, thread_from: 0, thread_to: 1}));
+
+        expect(pieces.length).toBeGreaterThan(1);
+        expect(pieces[0].thread_from).toBe(0);
+        expect(pieces[pieces.length - 1].thread_to).toBe(1);
+        pieces.forEach((piece, i) => {
+            expect(piece.thread).toBe(thread);
+            if (i) expect(piece.thread_from).toBeCloseTo(pieces[i - 1].thread_to, 12);
+            expect(piece.thread_to).toBeGreaterThan(piece.thread_from);
+        });
+    });
+
+    test('a thread block is cut at its turns, so the tool is drawn standing in one', () => {
+        // The tool is drawn at the end of the piece that has been reached. Cut
+        // anywhere but at a turn and the insert hangs between two of them,
+        // in the crest instead of in the groove it is cutting.
+        const marks = [0, 0.1, 0.35, 0.6, 0.85, 1];
+        const thread = {marks, turns: 5};
+        const pieces = subdivideElement(move(0, -100, {thread, thread_from: 0, thread_to: 1}));
+
+        // One piece per gap between consecutive cut points: the marks at 0 and
+        // 1 are the ends of the block, not cuts inside it.
+        expect(pieces.length).toBe(5);
+        pieces.forEach((piece, i) => {
+            expect(piece.thread_from).toBeCloseTo(marks[i], 12);
+            expect(piece.thread_to).toBeCloseTo(marks[i + 1], 12);
+            expect(piece.Z_start).toBeCloseTo(-100 * marks[i], 10);
+            expect(piece.Z).toBeCloseTo(-100 * marks[i + 1], 10);
+        });
+    });
+
+    test('the pieces of a thread are uneven, and how much is drawn says so', () => {
+        // `buildAnimationPieces` used to read the fraction of the block off the
+        // count of pieces, which is only the same number while they are all
+        // the same length.
+        const thread = {marks: [0, 0.25, 1], turns: 2};
+        const {elements, endFracOf} = buildAnimationPieces(
+            [move(0, -100, {thread, thread_from: 0, thread_to: 1})]);
+
+        expect(elements.length).toBe(2);
+        expect(endFracOf[0]).toBeCloseTo(0.25, 12);
+        expect(endFracOf[1]).toBe(1);
+    });
+
+    test('a thread block with no turn in it is cut the ordinary way', () => {
+        const even = subdivideElement(move(0, -100));
+        const none = subdivideElement(
+            move(0, -100, {thread: {marks: [], turns: 0}, thread_from: 0, thread_to: 1}));
+
+        expect(none.length).toBe(even.length);
+    });
+
+    test('a piece of a piece keeps narrowing the same slice', () => {
+        // Nothing subdivides twice today, but the slice is relative to the
+        // block and must stay so if anything ever does.
+        const thread = {marks: [0, 1], turns: 1};
+        const half = subdivideElement(move(0, -100, {thread, thread_from: 0.25, thread_to: 0.75}));
+
+        expect(half[0].thread_from).toBeCloseTo(0.25, 12);
+        expect(half[half.length - 1].thread_to).toBeCloseTo(0.75, 12);
+    });
+
+    test('a block with no thread gains no slice', () => {
+        const pieces = subdivideElement(move(0, -100));
+        pieces.forEach(piece => {
+            expect('thread_from' in piece).toBe(false);
+            expect('thread_to' in piece).toBe(false);
+        });
+    });
+
     test('a block shorter than the step is passed through whole', () => {
         const el = move(0, 0.5);
         expect(subdivideElement(el)).toEqual([el]);

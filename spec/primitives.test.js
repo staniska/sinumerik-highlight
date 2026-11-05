@@ -67,6 +67,11 @@ jest.mock('../lib/utils', () => ({
     unmaskStringSpaces: jest.fn((str) => str),
     isLinearAxis: jest.fn((name) => /^[XYZUVW]$/.test(name)),
     isFrameAxis: jest.fn((name) => /^[XYZ]$/.test(name)),
+    isThreadType: jest.fn((type) => type === 'G33' || type === 'G34' || type === 'G35'),
+    isCuttingType: jest.fn((type) => type === 'G0' || type === 'G1'),
+    isPathType: jest.fn((type) => ['G0', 'G1', 'G33', 'G34', 'G35'].includes(type)),
+    isSegmentType: jest.fn((type) => ['G0', 'G1', 'G33', 'G34', 'G35', 'transform'].includes(type)),
+    isMoveGroupType: jest.fn((type) => ['G0', 'G1', 'G2', 'G3', 'G33', 'G34', 'G35', 'transform'].includes(type)),
 }));
 
 jest.mock('../lib/degreesMath', () => ({
@@ -83,7 +88,7 @@ global.atom = {
 };
 
 const {addY_for_C_rot, generatePrimitives, generateCanvasPrimitives} = require('../lib/primitives');
-const {mathParse} = require('../lib/mathParser');
+const {mathParse, calcValue} = require('../lib/mathParser');
 
 let View;
 
@@ -1341,5 +1346,368 @@ describe('G18 nose arc of a tool outline', () => {
 
     test('both sweeps declare the same radius, which is why direction needs its own test', () => {
         expect(drawNose('G2').arc.radius).toBeCloseTo(drawNose('G3').arc.radius, 10);
+    });
+});
+
+describe('thread blocks — G33, G34, G35', () => {
+    const PROG = 'PROG';
+    const last = () => View.sinumerikView.parseData.canvas[View.sinumerikView.parseData.canvas.length - 1];
+    const errors = () => View.sinumerikView.parseData.errors.map(e => e.text).join(' | ');
+
+    // G18, which is where a lathe thread lives: Z and X, with K and I as their
+    // pitch vectors.
+    const block = (group, operators) => ({
+        operators: group ? [{type: 'moveGroup', value: group}, ...operators] : operators,
+    });
+    const axis = (name, value) => ({type: 'coordinate', name, value: String(value)});
+    const pitch = (name, value) => ({type: 'circleCenter', name, value: String(value)});
+
+    beforeEach(() => {
+        const pd = View.sinumerikView.parseData;
+        pd.moveGroup = '';
+        pd.plane = 'G18';
+        pd.planeAxes = ['Z', 'X', 'Y'];
+        pd.planeFirstAxes = ['Z', 'X'];
+        pd.planeCircleAxes = ['K', 'I'];
+        pd.rndm = 0;
+        pd.diamon = 0;
+        pd.unitMult = 1;
+        pd.feed = {type: 'G95', value: 0.25};
+        pd.spindleSpeed = {type: 'G97', value: 500, limit: 3000};
+        pd.blockFeed = null;
+        pd.toolRadiusCompensation = 'G40';
+        pd.threadPhase = 0;
+        pd.canvas = [];
+        pd.errors = [];
+        pd.axesPos = {X: 10, Y: 0, Z: 0};
+        pd.prevMove = [];
+        pd.auxAxes = [];
+        pd.auxPos = {};
+        pd.contourElements = {};
+        pd.currentBucket = null;
+        pd.inShapeParse = false;
+        pd.threadG96Reported = false;
+        calcValue.mockImplementation((v) => (typeof v === 'string' && v[0] === '=' ? v.substring(1) : v));
+    });
+
+    test('a cylindrical thread carries its pitch and turns, and the pitch is not an arc centre', () => {
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+
+        expect(errors()).toBe('');
+        expect(last().type).toBe('G33');
+        expect(last().thread.pitch).toBe(2);
+        expect(last().thread.axis).toBe('Z');
+        expect(last().thread.turns).toBeCloseTo(15, 10);
+        expect(last().thread.marks.length).toBe(16);
+        // The three things the arc-centre branch would have done to it.
+        expect('K' in last()).toBe(false);
+        expect('I' in last()).toBe(false);
+    });
+
+    test('the pitch is not added to the current coordinate', () => {
+        // The arc-centre branch reads the plain form as incremental from where
+        // the axis stands. A pitch is a length and has nothing to be added to.
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 77};
+        generateCanvasPrimitives(block('G33', [axis('Z', 47), pitch('K', 2)]), PROG, 0);
+
+        expect(last().thread.pitch).toBe(2);
+    });
+
+    test('the pitch is not mirrored', () => {
+        View.sinumerikView.parseData.frame.mirror.Z = -1;
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+        View.sinumerikView.parseData.frame.mirror.Z = 1;
+
+        expect(last().thread.pitch).toBe(2);
+    });
+
+    test('a face thread takes I, and the pitch is spent on the radius', () => {
+        // The travel reaching here is radial — X is held in radii all the way
+        // through, halved at the tokenizer while DIAMON is active — and the
+        // pitch is spent against it as written. So `I` works per side, and
+        // neither half nor twice of it appears anywhere: the one place the
+        // pitch and an arc centre differ is that an arc centre in the absolute
+        // form `I=AC(...)` IS halved (primitives.js, checkCircleCenterAxes),
+        // and that form is refused for a thread.
+        const pd = View.sinumerikView.parseData;
+        pd.diamon = 1;
+        pd.axesPos = {X: 2, Y: 0, Z: 0};
+        generateCanvasPrimitives(block('G33', [axis('X', 14), pitch('I', 1.5)]), PROG, 0);
+
+        expect(errors()).toBe('');
+        expect(last().thread.axis).toBe('X');
+        expect(last().thread.pitch).toBe(1.5);
+        expect(last().thread.turns).toBeCloseTo(8, 10);
+    });
+
+    test('the code is modal: a continuation block carries the chain on', () => {
+        generateCanvasPrimitives(block('G33', [axis('Z', -31), pitch('K', 2)]), PROG, 0);
+        expect(View.sinumerikView.parseData.threadPhase).toBeCloseTo(0.5, 10);
+
+        // No G word at all — the run-out of a thread is written like this.
+        generateCanvasPrimitives(block(null, [axis('Z', -40), pitch('K', 2)]), PROG, 1);
+
+        expect(errors()).toBe('');
+        expect(last().type).toBe('G33');
+        // Half a revolution was already owed, so the first mark of this block
+        // comes after half a pitch rather than at its start.
+        expect(last().thread.marks[0] * 9).toBeCloseTo(1, 10);
+    });
+
+    test('anything that moves and is not a thread breaks the chain', () => {
+        generateCanvasPrimitives(block('G33', [axis('Z', -31), pitch('K', 2)]), PROG, 0);
+        generateCanvasPrimitives(block('G1', [axis('X', 20)]), PROG, 1);
+
+        expect(View.sinumerikView.parseData.threadPhase).toBe(0);
+        expect(last().thread).toBeUndefined();
+    });
+
+    test('SF sets the phase of the chain', () => {
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -30), pitch('K', 2), {type: 'SF', value: '=90'}]), PROG, 0);
+
+        expect(errors()).toBe('');
+        expect(last().thread.marks[0] * 30).toBeCloseTo(1.5, 10);
+    });
+
+    test('SF outside 0…360 is refused', () => {
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -30), pitch('K', 2), {type: 'SF', value: '=450'}]), PROG, 0);
+
+        expect(errors()).toMatch(/SF=.*0…360/);
+        expect(last().thread).toBeUndefined();
+    });
+
+    test('G34 reads F as the change of pitch and leaves the modal feed alone', () => {
+        // The feed itself is written in interpretator.js, which is not in the
+        // picture here; what this proves is that the value reaches the thread.
+        generateCanvasPrimitives(
+            block('G34', [axis('Z', -34), pitch('K', 1.5), {type: 'F_feed', value: '0.02'}]), PROG, 0);
+
+        expect(errors()).toBe('');
+        expect(last().thread.pitchChange).toBeCloseTo(0.02, 10);
+        expect(last().thread.turns).toBeCloseTo(20, 8);
+        expect(last().thread.endPitch).toBeCloseTo(1.9, 8);
+        expect(View.sinumerikView.parseData.feed.value).toBe(0.25);
+    });
+
+    test('G35 lowers the pitch — the sign comes from the code, not from F', () => {
+        generateCanvasPrimitives(
+            block('G35', [axis('Z', -100), pitch('K', 2), {type: 'F_feed', value: '0.01'}]), PROG, 0);
+
+        expect(errors()).toBe('');
+        expect(last().thread.pitchChange).toBeCloseTo(-0.01, 10);
+        expect(last().thread.endPitch).toBeLessThan(2);
+    });
+
+    test('G35 that cannot reach its end point is refused with the distance it can', () => {
+        generateCanvasPrimitives(
+            block('G35', [axis('Z', -250), pitch('K', 2), {type: 'F_feed', value: '0.01'}]), PROG, 0);
+
+        expect(errors()).toMatch(/pitch reaches zero after 200\.000 mm/);
+        expect(last().thread).toBeUndefined();
+    });
+
+    test('G34 without F is refused', () => {
+        generateCanvasPrimitives(block('G34', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+
+        expect(errors()).toMatch(/G34 needs F/);
+        expect(last().thread).toBeUndefined();
+    });
+
+    test('the change of pitch scales with the unit of the program', () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        generateCanvasPrimitives(
+            block('G34', [axis('Z', -34), pitch('K', 1.5), {type: 'F_feed', value: '0.02'}]), PROG, 0);
+
+        expect(last().thread.pitchChange).toBeCloseTo(0.02 * 25.4, 10);
+    });
+
+    test('a pitch vector outside the plane is refused', () => {
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('J', 2)]), PROG, 0);
+
+        expect(errors()).toMatch(/not a pitch vector of the active plane/);
+    });
+
+    test('two pitch vectors in one block are refused', () => {
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -30), axis('X', 20), pitch('K', 2), pitch('I', 1)]), PROG, 0);
+
+        expect(errors()).toMatch(/Only one pitch vector/);
+    });
+
+    test('no pitch vector at all is refused', () => {
+        generateCanvasPrimitives(block('G33', [axis('Z', -30)]), PROG, 0);
+
+        expect(errors()).toMatch(/needs a thread pitch: K or I/);
+    });
+
+    test('the pitch must be given for the axis that travels furthest', () => {
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -10), axis('X', 40), pitch('K', 2)]), PROG, 0);
+
+        expect(errors()).toMatch(/axis that travels furthest/);
+    });
+
+    test('a 45 degree taper accepts either vector', () => {
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -20), axis('X', 30), pitch('K', 2)]), PROG, 0);
+        expect(errors()).toBe('');
+
+        View.sinumerikView.parseData.errors = [];
+        View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -20), axis('X', 30), pitch('I', 2)]), PROG, 1);
+        expect(errors()).toBe('');
+    });
+
+    test('an arc-centre form cannot be a pitch', () => {
+        generateCanvasPrimitives(
+            block('G33', [axis('Z', -30), {type: 'circleCenter', name: 'K', value: '2', subtype: 'AC'}]), PROG, 0);
+
+        expect(errors()).toMatch(/arc-centre form/);
+    });
+
+    test('a thread under G41 is refused and nothing is computed', () => {
+        View.sinumerikView.parseData.toolRadiusCompensation = 'G41';
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+
+        expect(errors()).toMatch(/never cut with tool radius compensation/);
+        expect(last().thread).toBeUndefined();
+    });
+
+    test('a corner or an arc word in a thread block is refused', () => {
+        for (const extra of [
+            {type: 'coordinate', name: 'X', value: '5', subtype: 'RND'},
+            {type: 'circle_CR', value: '5'},
+            {type: 'TURN', value: '2'},
+        ]) {
+            View.sinumerikView.parseData.errors = [];
+            View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+            generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2), extra]), PROG, 0);
+            expect(errors()).toMatch(/cannot be used in a thread block/);
+        }
+    });
+
+    test('modal RNDM is left out of a thread block instead of shouting about it', () => {
+        View.sinumerikView.parseData.rndm = 3;
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+
+        expect(errors()).toBe('');
+        expect(last().thread.pitch).toBe(2);
+        expect(last().RND).toBeUndefined();
+    });
+
+    test('G96 with a thread is reported, and the marks are still placed', () => {
+        View.sinumerikView.parseData.spindleSpeed = {type: 'G96', value: 200, limit: 3000};
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+
+        expect(errors()).toMatch(/needs constant spindle speed/);
+        expect(last().thread.marks.length).toBe(16);
+    });
+
+    test('G96 is complained about once per parse, not once per block', () => {
+        // Modal, so under it every block of the thread is one — and a thread of
+        // two thousand blocks would be two thousand identical rows.
+        View.sinumerikView.parseData.spindleSpeed = {type: 'G96', value: 200, limit: 3000};
+        for (let row = 0; row < 5; row++) {
+            View.sinumerikView.parseData.axesPos = {X: 10, Y: 0, Z: 0};
+            generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, row);
+        }
+
+        expect(View.sinumerikView.parseData.errors.length).toBe(1);
+    });
+
+    test('a thread in a shape file is refused', () => {
+        View.sinumerikView.parseData.inShapeParse = true;
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+        View.sinumerikView.parseData.inShapeParse = false;
+
+        expect(errors()).toMatch(/no place in a shape file/);
+        expect(last().thread).toBeUndefined();
+    });
+
+    test('a thread block is not pushed into a contour bucket', () => {
+        const pd = View.sinumerikView.parseData;
+        pd.currentBucket = 'SUB_MPF';
+        pd.contourElements = {SUB_MPF: []};
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+        generateCanvasPrimitives(block('G1', [axis('Z', -40)]), PROG, 1);
+
+        expect(pd.contourElements.SUB_MPF.length).toBe(1);
+        expect(pd.contourElements.SUB_MPF[0].end[2]).toBe(-40);
+    });
+
+    test('the element carries the slice of itself it covers', () => {
+        generateCanvasPrimitives(block('G33', [axis('Z', -30), pitch('K', 2)]), PROG, 0);
+
+        expect(last().thread_from).toBe(0);
+        expect(last().thread_to).toBe(1);
+    });
+});
+
+describe('thread words reach the tokenizer', () => {
+    // A word the operand chain does not claim falls through the whole thing and
+    // comes back as "Not one parser worked", which is how FRC and FA used to
+    // behave. These are the three the thread needs.
+    const parseRowsFn = jest.fn();
+    const PROG = 'PROG';
+
+    const operators = async (row) => {
+        const result = await generatePrimitives(row, PROG, 0, [row], parseRowsFn);
+        return result.operators.filter(Boolean);
+    };
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.errors = [];
+        View.sinumerikView.parseData.unitMult = 1;
+        View.sinumerikView.parseData.diamon = 0;
+        mathParse.mockImplementation((v) => parseFloat(v));
+    });
+
+    test('G33, G34 and G35 are move groups', async () => {
+        for (const code of ['G33', 'G34', 'G35']) {
+            const ops = await operators(code);
+            expect(ops[0]).toEqual({type: 'moveGroup', value: code});
+        }
+    });
+
+    test('the short form is not allowed to claim the head of the long one', async () => {
+        // `G[0-3]` matched the `G3` of `G34`, and the full-match test then threw
+        // the block away.
+        expect((await operators('G3'))[0]).toEqual({type: 'moveGroup', value: 'G3'});
+        expect((await operators('G2'))[0]).toEqual({type: 'moveGroup', value: 'G2'});
+    });
+
+    test('a whole thread block is claimed word for word', async () => {
+        const ops = await operators('G33 Z-30 K2');
+
+        expect(ops.map(o => o.type)).toEqual(['moveGroup', 'coordinate', 'circleCenter']);
+        expect(ops[2].name).toBe('K');
+        expect(ops[2].value).toBe(2);
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    test('SF is claimed, and not by the spindle speed', async () => {
+        const ops = await operators('G33 Z-30 K2 SF=90');
+
+        expect(ops[3]).toEqual({type: 'SF', value: '=90'});
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    test('a G34 block carries F as an ordinary feed word for the caller to reinterpret', async () => {
+        const ops = await operators('G34 Z-34 K1.5 F0.02');
+
+        expect(ops[3]).toEqual({type: 'F_feed', value: '0.02'});
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    test('the pitch scales with the unit of the program, like any length', async () => {
+        View.sinumerikView.parseData.unitMult = 25.4;
+        const ops = await operators('G33 Z-1 K0.05');
+
+        expect(ops[2].value).toBeCloseTo(0.05 * 25.4, 10);
     });
 });
