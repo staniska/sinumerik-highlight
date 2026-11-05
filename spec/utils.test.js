@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: {} }
 }));
 
-const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis, fillAuxAxes, extractFlaggedShape } = require('../lib/utils');
+const { extractBoundingContourBlock, normalizeFileName, maskStringSpaces, unmaskStringSpaces, STRING_SPACE_SENTINEL, buildAnimationPieces, subdivideElement, traceFrameTarget, toolMarkerOf, isNoToolName, NO_TOOL_NAME, normalizeFeedValue, stickyMsgAt, wheelIsMouse, isLinearAxis, isFrameAxis, fillAuxAxes, extractFlaggedShape } = require('../lib/utils');
 
 describe('maskStringSpaces / unmaskStringSpaces', () => {
     const S = STRING_SPACE_SENTINEL;
@@ -472,9 +472,33 @@ describe('toolMarkerOf', () => {
 
     test('nothing to read', () => {
         expect(toolMarkerOf('')).toBeNull();
+        // A marker with no name is no marker: the tool in force stays in force.
+        // Left as it is deliberately — with Real-time Debug on, the parse runs
+        // while the line is being typed, and reading the half-written `;TOOL:`
+        // as an unload would flicker the tool off between keystrokes.
         expect(toolMarkerOf(';TOOL:')).toBeNull();
         expect(toolMarkerOf(null)).toBeNull();
         expect(toolMarkerOf(undefined)).toBeNull();
+    });
+});
+
+// `;TOOL:0` unloads the tool. One spelling, matched whole.
+describe('isNoToolName', () => {
+    test('the reserved name, with the spacing a marker may carry', () => {
+        expect(isNoToolName(NO_TOOL_NAME)).toBe(true);
+        expect(isNoToolName('0')).toBe(true);
+        expect(isNoToolName(' 0 ')).toBe(true);
+        expect(isNoToolName(0)).toBe(true);
+    });
+
+    test('a name that merely looks like it is an ordinary tool', () => {
+        expect(isNoToolName('00')).toBe(false);
+        expect(isNoToolName('01')).toBe(false);
+        expect(isNoToolName('T0')).toBe(false);
+        expect(isNoToolName('0.0')).toBe(false);
+        expect(isNoToolName('')).toBe(false);
+        expect(isNoToolName(null)).toBe(false);
+        expect(isNoToolName(undefined)).toBe(false);
     });
 });
 

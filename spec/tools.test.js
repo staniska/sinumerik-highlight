@@ -156,6 +156,9 @@ describe('whose tools the panel is about', () => {
 // keeps private — is read through what Enter does with it: the marker that
 // reaches the editor names the tool that was selected. That also covers the
 // two rules worth pinning down, wrap-around and insert-and-close.
+// The list the arrows walk is «No tool» followed by the machine's tools, so the
+// first ArrowDown lands on the standing row and a tool is one step further than
+// it used to be (lib/tools.js::toolListEntries).
 describe('keyboard navigation', () => {
     const THREE_TOOLS = {
         machineManagerData: {selectedMachine: 'LATHE1'},
@@ -205,8 +208,15 @@ describe('keyboard navigation', () => {
 
     const press = key => handleToolsKey({key, preventDefault: () => {}, stopPropagation: () => {}});
 
-    test('Down from nothing selected lands on the first tool', () => {
+    test('Down from nothing selected lands on the standing No tool row', () => {
         expect(press('ArrowDown')).toBe(true);
+        press('Enter');
+        expect(inserted).toEqual([';TOOL:0\n']);
+    });
+
+    test('one more Down lands on the first tool', () => {
+        press('ArrowDown');
+        press('ArrowDown');
         press('Enter');
         expect(inserted).toEqual([';TOOL:A\n']);
     });
@@ -217,13 +227,15 @@ describe('keyboard navigation', () => {
         expect(inserted).toEqual([';TOOL:C\n']);
     });
 
-    test('Down walks the list and wraps round the end', () => {
+    test('Down walks the list and wraps round onto the standing row', () => {
+        // No tool, A, B, C, and round again.
+        press('ArrowDown');
         press('ArrowDown');
         press('ArrowDown');
         press('ArrowDown');
         press('ArrowDown');
         press('Enter');
-        expect(inserted).toEqual([';TOOL:A\n']);
+        expect(inserted).toEqual([';TOOL:0\n']);
     });
 
     test('Up wraps the other way', () => {
@@ -234,6 +246,7 @@ describe('keyboard navigation', () => {
     });
 
     test('Enter inserts the marker and closes the window', () => {
+        press('ArrowDown');
         press('ArrowDown');
         press('ArrowDown');
         expect(press('Enter')).toBe(true);
@@ -254,8 +267,18 @@ describe('keyboard navigation', () => {
         expect(closed).toBe(0);
     });
 
-    test('a machine with no tools ignores the keys rather than throwing', () => {
+    // Writing `;TOOL:0` asks nothing of the tool list, so the row is there and
+    // the keys work even on a machine that has no tools at all.
+    test('a machine with no tools still offers the No tool row', () => {
         View.sinumerikView = {machineManagerData: {selectedMachine: 'LATHE1'}, machineData: {tools: {}}};
+        expect(press('ArrowDown')).toBe(true);
+        expect(press('Enter')).toBe(true);
+        expect(inserted).toEqual([';TOOL:0\n']);
+    });
+
+    test('no machine selected: the keys are not claimed', () => {
+        View.sinumerikView = {machineManagerData: {}, machineData: {tools: {}}};
+        globalThis.atom = {workspace: {getActiveTextEditor: () => null}};
         expect(press('ArrowDown')).toBe(false);
         expect(press('Enter')).toBe(false);
     });
@@ -267,6 +290,7 @@ describe('keyboard navigation', () => {
 
     test('Enter over a marker already on the cursor line replaces its name', () => {
         withEditor([';TOOL:A']);
+        press('ArrowDown');
         press('ArrowDown');
         press('ArrowDown');
         expect(press('Enter')).toBe(true);
@@ -281,6 +305,7 @@ describe('keyboard navigation', () => {
         withEditor(['; tool: a   ; roughing']);
         press('ArrowDown');
         press('ArrowDown');
+        press('ArrowDown');
         press('Enter');
 
         expect(replaced).toEqual([{range: [[0, 8], [0, 9]], text: 'B'}]);
@@ -288,6 +313,7 @@ describe('keyboard navigation', () => {
 
     test('Enter on a marker that already names the selected tool writes nothing', () => {
         withEditor([';TOOL:A']);
+        press('ArrowDown');
         press('ArrowDown');
         expect(press('Enter')).toBe(true);
 
@@ -300,14 +326,27 @@ describe('keyboard navigation', () => {
     test('a line with no marker gets one on a line of its own, as before', () => {
         withEditor(['G1 X10']);
         press('ArrowDown');
+        press('ArrowDown');
         press('Enter');
 
         expect(inserted).toEqual([';TOOL:A\n']);
         expect(replaced).toEqual([]);
     });
 
+    // The whole point of the row: unloading the tool is written the same way
+    // loading one is, over the marker that is already there.
+    test('the No tool row writes the reset over an existing marker', () => {
+        withEditor([';TOOL:A']);
+        press('ArrowDown');
+        expect(press('Enter')).toBe(true);
+
+        expect(replaced).toEqual([{range: [[0, 6], [0, 7]], text: '0'}]);
+        expect(inserted).toEqual([]);
+    });
+
     test('the marker is read off the row the cursor is on, not the first row', () => {
         withEditor(['G0 X0', ';TOOL:C', 'G1 X1'], 1);
+        press('ArrowDown');
         press('ArrowDown');
         press('Enter');
 
@@ -338,6 +377,15 @@ describe('toolFromCursorLine', () => {
         expect(toolFromCursorLine(undefined, tools)).toBeNull();
         expect(toolFromCursorLine(';TOOL:TURN35', undefined)).toBeNull();
     });
+
+    // The reset is recognised against no list at all, the way the parser
+    // recognises it. Otherwise opening the window on a `;TOOL:0` line would land
+    // on an arbitrary tool, and `Enter` would put its name over the reset.
+    test('the reset marker selects the standing No tool row', () => {
+        expect(toolFromCursorLine(';TOOL:0', tools)).toBe('0');
+        expect(toolFromCursorLine('; tool: 0   ; nothing loaded', tools)).toBe('0');
+        expect(toolFromCursorLine(';TOOL:0', [])).toBe('0');
+    });
 });
 
 describe('toolFromFile', () => {
@@ -365,6 +413,21 @@ describe('toolFromFile', () => {
 
         expect(picked.error).toBe('duplicate');
         expect(picked.name).toBe('ROMB');
+    });
+
+    // `0` is what `;TOOL:0` means, so a tool of that name could never be picked
+    // by a marker. Refused where the name enters rather than where it is used.
+    test('the reserved name is refused, and named', () => {
+        const picked = toolFromFile(';NAME:0', []);
+
+        expect(picked.error).toBe('reserved');
+        expect(picked.name).toBe('0');
+    });
+
+    // Only the whole name: `01` and `T0` are ordinary names.
+    test('a name that merely starts with a zero is a tool like any other', () => {
+        expect(toolFromFile(';NAME:01', [])).toEqual({name: '01'});
+        expect(toolFromFile(';NAME:T0', [])).toEqual({name: 'T0'});
     });
 
     // Adding several at once: the caller passes the names as the list grows, so

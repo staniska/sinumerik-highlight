@@ -187,6 +187,16 @@ WebGL and the 3D view. The marker may stand anywhere a comment may, the program'
 It is modal and leaks into subroutines, like the rest of the modal state; the last one executed
 wins.
 
+The list begins with a standing **No tool** row, which writes `;TOOL:0` — from that line on no tool
+is loaded, the way `T0` says it at the machine. It is as modal as any other marker, leaking into
+subroutines and out of them, so a reset at the end of a subroutine unloads the tool for whatever
+called it. Blocks travelled with no tool are left out of the material trace and counted as blocks
+that ran without a tool outline — the same count a block whose tool file is missing lands in, so an
+unloaded stretch reads there as "the stock may be wrong" even though a block with no tool cuts
+nothing. `0` is reserved for this: a tool file whose first row says `;NAME:0` is refused by
+**Add**, and a machine stocked with one before this existed says so when a `;TOOL:0` is met. `;TOOL:`
+with no name at all is not a marker and changes nothing — the tool in force stays in force.
+
 The window works with the line the cursor is on. Opening it on a line that already carries a
 `;TOOL:` marker selects that tool, and `Enter` then writes the new name **over** the old marker
 instead of adding a second one next to it — only the name is replaced, so the spacing and anything

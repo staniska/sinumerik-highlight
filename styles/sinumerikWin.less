@@ -1051,6 +1051,16 @@
   }
 }
 
+// The standing «No tool» row is not one of the machine's tools, and reads as a
+// state rather than a thing: subtler text and a rule under it, so the eye does
+// not look for a file behind it. Still selectable, so the rule below wins when
+// it is.
+.sinumerik-tools-element--noTool {
+  color: @sin-text-subtle;
+  font-style: italic;
+  border-bottom: 1px solid @sin-border;
+}
+
 .sinumerik-tools-element--selected,
 .sinumerik-tools-element--selected:hover {
   background-color: @sin-btn-selected;
