@@ -620,7 +620,13 @@ describe('unitMult scaling', () => {
 
         await generatePrimitives('ROT X10', PROG, 0, prog('ROT X10'), parseRowsFn);
 
-        expect(generateFrame.mock.calls[0][2][0].value).toBe(10);
+        // A string, because nothing in the tokenizer touches a rotation's value
+        // any more: the mirror multiplication that used to coerce it to a number
+        // has moved into `generateFrame`, which is the only place that knows
+        // whether the mirror applies at all (spec/generateFrame.test.js) and
+        // parses the value there. What this test is about is that `unitMult`
+        // left it alone.
+        expect(generateFrame.mock.calls[0][2][0].value).toBe('10');
     });
 });
 
