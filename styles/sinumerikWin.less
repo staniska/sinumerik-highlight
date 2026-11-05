@@ -1392,7 +1392,12 @@
   position: relative;
 }
 
-.sinumerikSLDSlowSpinner {
+// One indicator, two places: over the Slow debug button while the first frame
+// is worked out, and over the canvas while a borrowed blank is computed. The
+// same wait deserves the same picture, so the two share every declaration that
+// is about the picture.
+.sinumerikSLDSlowSpinner,
+.sinumerikSLDIpsSpinner {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1402,7 +1407,8 @@
   border: 2px solid fade(@sin-text-success, 25%);
   border-top-color: @sin-text-success;
   border-radius: 50%;
-  // The button underneath stays the click target.
+  // What is underneath stays the click target — the button there, the canvas
+  // with its pan, zoom and hit-testing here.
   pointer-events: none;
   // Fading in on a delay is what keeps a short wait from showing as a blink:
   // work that finishes inside the delay is never announced. The delay is held
@@ -1411,6 +1417,13 @@
   opacity: 0;
   animation: sinumerikSLDSpin 0.7s linear infinite,
              sinumerikSLDSpinnerIn 0.1s linear 0.15s forwards;
+}
+
+.sinumerikSLDIpsSpinner {
+  // Above whatever the active renderer put in the window, and above the message
+  // stack: the canvas element is not positioned, the WebGL wrapper is, and this
+  // must not depend on which of them was appended last.
+  z-index: 10;
 }
 
 @keyframes sinumerikSLDSpin {

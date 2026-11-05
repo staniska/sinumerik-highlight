@@ -290,6 +290,11 @@ stock is then computed when this one is parsed, and the chain can be any length:
 op20, which borrows from op10, which has a blank of its own. Programs written before this existed
 are untouched — a program declares either a blank or a stock source, never both.
 
+A spinner in the middle of the canvas shows that stock being worked out — the same one that appears
+over the Slow debug button. Until it finishes the canvas still holds the last whole picture, so
+without it there was nothing to say why the drawing had not moved yet. A computation that finishes
+quickly, a cached one above all, never shows it.
+
 Editing the previous program and **saving** it is enough: the blank here follows. An edit in the
 program you are looking at never recomputes anything, since that is a parse and a trace run of
 another program — seconds of work, not something to do between two keystrokes — so a source changed
