@@ -80,6 +80,10 @@ describe('mathParse', () => {
         View.sinumerikView.parseData.errors = [];
         View.sinumerikView.parseData.auxPos = {};
         View.sinumerikView.parseData.unitMult = 1;
+        View.sinumerikView.parseData.activeTool = 0;
+        View.sinumerikView.parseData.activeToolR = 0;
+        View.sinumerikView.parseData.activeToolDef = null;
+        View.sinumerikView.toolGeometry = {};
         getCoordinatesInFrame.mockReturnValue([0, 0, 0]);
     });
 
@@ -191,6 +195,72 @@ describe('mathParse', () => {
             View.sinumerikView.parseData.auxPos = {A: 90, C: 10};
 
             expect(mathParse('$AA_IW[A]-$AA_IW[C]', 'prog', 0)).toBe(80);
+        });
+    });
+
+    // The active tool's numbers come from the tool FILE when a `;TOOL:` marker
+    // named one — `parseData.activeToolDef` says which file, and its
+    // `;---VARIABLES` block is cached by path in `toolGeometry`. The legacy
+    // `;T10x R..` comment above a `T=` word, which lands in `activeTool` /
+    // `activeToolR`, stays the fallback. Reading only the legacy fields was the
+    // bug where `;T102 R12.5` in a tool file gave `$P_TOOLR` = 0.
+    describe('the active tool\'s numbers', () => {
+        const withToolFile = variables => {
+            View.sinumerikView.parseData.activeToolDef = {name: 'TURN35', path: '/m/turn35.spf'};
+            View.sinumerikView.toolGeometry = {'/m/turn35.spf': {variables}};
+        };
+
+        test('$P_TOOLR is the nose radius the tool file declares', () => {
+            withToolFile({'$TC_DP2': '2', '$TC_DP6': '12.5'});
+
+            expect(mathParse('$P_TOOLR', 'prog', 0)).toBe(12.5);
+            expect(mathParse('$P_TOOLR*2', 'prog', 0)).toBe(25);
+        });
+
+        // D-numbers are out of scope, so an index on the key is ignored —
+        // the same rule `lookupVariable` applies on the expression side.
+        test('an indexed key in the file is the same field', () => {
+            withToolFile({'$TC_DP6[1]': '0.8'});
+
+            expect(mathParse('$P_TOOLR', 'prog', 0)).toBe(0.8);
+        });
+
+        test('with no tool file the legacy comment value still answers', () => {
+            View.sinumerikView.parseData.activeToolR = 0.4;
+
+            expect(mathParse('$P_TOOLR', 'prog', 0)).toBe(0.4);
+        });
+
+        // A file that declares no radius must not read as "radius 0": the
+        // legacy number is the better answer, and 0 is a tool with no nose.
+        test('a file without the field falls back too', () => {
+            withToolFile({'$TC_DP10': '80'});
+            View.sinumerikView.parseData.activeToolR = 0.4;
+
+            expect(mathParse('$P_TOOLR', 'prog', 0)).toBe(0.4);
+        });
+
+        test('an outline not read yet falls back rather than reading 0', () => {
+            View.sinumerikView.parseData.activeToolDef = {name: 'TURN35', path: '/m/turn35.spf'};
+            View.sinumerikView.parseData.activeToolR = 0.4;
+
+            expect(mathParse('$P_TOOLR', 'prog', 0)).toBe(0.4);
+        });
+
+        test('$TC_DP2 is the edge position the tool file declares', () => {
+            withToolFile({'$TC_DP2': '3', '$TC_DP6': '0.8'});
+
+            expect(mathParse('$TC_DP2[1,1]', 'prog', 0)).toBe(3);
+        });
+
+        test('$TC_DP2 falls back to the legacy T10x number', () => {
+            View.sinumerikView.parseData.activeTool = 102;
+
+            expect(mathParse('$TC_DP2[1,1]', 'prog', 0)).toBe(2);
+        });
+
+        test('$TC_DP2 is 0 when neither source knows', () => {
+            expect(mathParse('$TC_DP2[1,1]', 'prog', 0)).toBe(0);
         });
     });
 });
