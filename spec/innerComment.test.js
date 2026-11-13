@@ -3,7 +3,7 @@ jest.mock('../lib/sinumerik', () => ({
     default: { sinumerikView: { programmData: {} } }
 }));
 
-const { parseAutoComment, loadDataFromComment, commentPayload, declaredFields } = require('../lib/inner-comment');
+const { parseAutoComment, loadDataFromComment, refreshDataFromComment, commentPayload, declaredFields } = require('../lib/inner-comment');
 const View = require('../lib/sinumerik').default;
 
 describe('parseAutoComment', () => {
@@ -236,6 +236,126 @@ describe('loadDataFromComment units back-compat', () => {
     });
 });
 
+
+// --- re-reading a comment that was edited by hand ---
+//
+// The record used to be built once and never touched again ("so the active
+// machine is not knocked out"), so a machine changed in the comment reached the
+// simulation only after Pulsar was restarted — the one thing that empties
+// `programmData`. The rule now is: a field is taken from the text where the
+// TEXT has changed since the last read, and nowhere else.
+
+describe('refreshDataFromComment', () => {
+    const BEGIN = ';This comment is automatically created by sinumerik-highlight package';
+    const END = ';End of comment created by sinumerik-highlight package';
+
+    const editorFor = (path, text) => ({getPath: () => path, getText: () => text});
+    const commented = payload => ['N1 G0 X0', BEGIN, `;${JSON.stringify(payload)}`, END].join('\n');
+
+    const lathe = name => ({machineName: name, machineType: 'Lathe', units: 'metric'});
+
+    beforeEach(() => {
+        View.sinumerikView.programmData = {};
+    });
+
+    test('a machine changed in the comment reaches the record', () => {
+        const path = '/test/reread-machine.mpf';
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('OLD')})));
+        expect(View.sinumerikView.programmData[path].machine.machineName).toBe('OLD');
+
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('NEW')})));
+        expect(View.sinumerikView.programmData[path].machine.machineName).toBe('NEW');
+    });
+
+    // The crutch this replaces: a machine picked in machineManager is not
+    // written to the text at once, and a re-read must not undo it.
+    test('a machine chosen in the UI survives a re-read of the same text', () => {
+        const path = '/test/ui-choice.mpf';
+        const text = commented({machine: lathe('FROM_TEXT')});
+        refreshDataFromComment(editorFor(path, text));
+
+        View.sinumerikView.programmData[path].machine = lathe('CHOSEN_IN_UI');
+        refreshDataFromComment(editorFor(path, text));
+
+        expect(View.sinumerikView.programmData[path].machine.machineName).toBe('CHOSEN_IN_UI');
+    });
+
+    test('an edit to the text wins over a machine chosen in the UI', () => {
+        const path = '/test/text-wins.mpf';
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('FROM_TEXT')})));
+        View.sinumerikView.programmData[path].machine = lathe('CHOSEN_IN_UI');
+
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('EDITED')})));
+
+        expect(View.sinumerikView.programmData[path].machine.machineName).toBe('EDITED');
+    });
+
+    // The text is re-read while it is being typed, and a half-written block
+    // parses as "declares nothing". Taking the machine away then would break
+    // the simulation in the middle of an edit.
+    test('a comment that no longer declares the machine does not take it away', () => {
+        const path = '/test/broken-comment.mpf';
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('KEEP')})));
+
+        refreshDataFromComment(editorFor(path, 'N1 G0 X0'));
+
+        expect(View.sinumerikView.programmData[path].machine.machineName).toBe('KEEP');
+    });
+
+    test('a changed subType of the same machine is taken over', () => {
+        const path = '/test/subtype.mpf';
+        refreshDataFromComment(editorFor(path, commented({
+            machine: {...lathe('TURN'), subType: 'Horizontal'}})));
+
+        refreshDataFromComment(editorFor(path, commented({
+            machine: {...lathe('TURN'), subType: 'Vertical'}})));
+
+        expect(View.sinumerikView.programmData[path].machine.subType).toBe('Vertical');
+    });
+
+    test('the units back-compat applies to a re-read as well', () => {
+        const path = '/test/reread-units.mpf';
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('FIRST')})));
+
+        refreshDataFromComment(editorFor(path, commented({
+            machine: {machineName: 'SECOND', machineType: 'Lathe'}})));
+
+        expect(View.sinumerikView.programmData[path].machine.units).toBe('metric');
+    });
+
+    // Mutually exclusive in both directions: the text decides which of the two
+    // is in force, exactly as a fresh read does.
+    test('an edit from blank to ips drops the blank, and back again drops the ips', () => {
+        const path = '/test/blank-ips.mpf';
+        refreshDataFromComment(editorFor(path, commented({blank: {name: 'ROD'}})));
+        expect(View.sinumerikView.programmData[path].blank).toEqual({name: 'ROD'});
+
+        refreshDataFromComment(editorFor(path, commented({ips: {name: 'OP10'}})));
+        expect(View.sinumerikView.programmData[path].ips).toEqual({name: 'OP10'});
+        expect(View.sinumerikView.programmData[path].blank).toBeUndefined();
+
+        refreshDataFromComment(editorFor(path, commented({blank: {name: 'ROD'}})));
+        expect(View.sinumerikView.programmData[path].blank).toEqual({name: 'ROD'});
+        expect(View.sinumerikView.programmData[path].ips).toBeUndefined();
+    });
+
+    // A record the IPS pre-pass built is not one this function created, so it
+    // has no remembered declaration: its first read adopts what the file says,
+    // which is what the pre-pass put there anyway.
+    test('a record made elsewhere is filled from the text on first read', () => {
+        const path = '/test/pre-pass.mpf';
+        View.sinumerikView.programmData[path] = {blank: {name: 'BLANK'}, contour: {name: 'CONTOUR'}};
+
+        refreshDataFromComment(editorFor(path, commented({machine: lathe('FROM_TEXT')})));
+
+        expect(View.sinumerikView.programmData[path].machine.machineName).toBe('FROM_TEXT');
+    });
+
+    test('no editor is not an error', () => {
+        expect(() => refreshDataFromComment(null)).not.toThrow();
+        expect(() => refreshDataFromComment(undefined)).not.toThrow();
+    });
+});
 
 // --- commentPayload: only what the file itself declares (granular auto-comment) ---
 //
