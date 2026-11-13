@@ -83,6 +83,7 @@ describe('mathParse', () => {
         View.sinumerikView.parseData.activeTool = 0;
         View.sinumerikView.parseData.activeToolR = 0;
         View.sinumerikView.parseData.activeToolDef = null;
+        View.sinumerikView.parseData.toolNumbersMissed = false;
         View.sinumerikView.toolGeometry = {};
         getCoordinatesInFrame.mockReturnValue([0, 0, 0]);
     });
@@ -261,6 +262,56 @@ describe('mathParse', () => {
 
         test('$TC_DP2 is 0 when neither source knows', () => {
             expect(mathParse('$TC_DP2[1,1]', 'prog', 0)).toBe(0);
+        });
+
+        // The outline of a named tool arriving only after the parse leaves the
+        // trajectory — not just the picture — computed from the fallback, so
+        // the parse says so and the preload parses again
+        // (`interpretator.js::reparseForToolNumbers`). Without this the right
+        // path appeared only when the user pressed Redraw.
+        test('a tool whose file is not cached is reported as a missed number', () => {
+            View.sinumerikView.parseData.activeToolDef = {name: 'TURN35', path: '/m/turn35.spf'};
+
+            mathParse('$P_TOOLR', 'prog', 0);
+
+            expect(View.sinumerikView.parseData.toolNumbersMissed).toBe(true);
+        });
+
+        test('$TC_DP2 reports it too', () => {
+            View.sinumerikView.parseData.activeToolDef = {name: 'TURN35', path: '/m/turn35.spf'};
+
+            mathParse('$TC_DP2[1,1]', 'prog', 0);
+
+            expect(View.sinumerikView.parseData.toolNumbersMissed).toBe(true);
+        });
+
+        test('a cached tool is not a missed number', () => {
+            withToolFile({'$TC_DP2': '2', '$TC_DP6': '12.5'});
+
+            mathParse('$P_TOOLR', 'prog', 0);
+
+            expect(View.sinumerikView.parseData.toolNumbersMissed).toBeFalsy();
+        });
+
+        // No tool named at all — the legacy comment, or nothing. There is no
+        // file to wait for, so a re-parse would change nothing and must not be
+        // asked for.
+        test('no active tool is not a missed number', () => {
+            View.sinumerikView.parseData.activeToolR = 0.4;
+
+            mathParse('$P_TOOLR', 'prog', 0);
+
+            expect(View.sinumerikView.parseData.toolNumbersMissed).toBeFalsy();
+        });
+
+        // A name the machine's list does not hold resolves to a pathless entry
+        // and is reported by the parse already; there is nothing to come.
+        test('an unresolved tool name is not a missed number', () => {
+            View.sinumerikView.parseData.activeToolDef = {name: 'GONE', path: null};
+
+            mathParse('$P_TOOLR', 'prog', 0);
+
+            expect(View.sinumerikView.parseData.toolNumbersMissed).toBeFalsy();
         });
     });
 });
