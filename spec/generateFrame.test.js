@@ -240,3 +240,191 @@ describe('what the frame words did right before, and still do', () => {
         expect(frame().trans).toEqual({X: 0, Y: 0, Z: 0});
     });
 });
+
+describe('indexed and transformed lathe motion', () => {
+    const {generateCanvasPrimitives} = require('../lib/primitives');
+    const {getCoordinatesInFrame} = require('../lib/coordinates');
+    const {updateTransmitAngle} = require('../lib/rotaryAxes');
+    const {recordFrameState} = require('../lib/frameTable');
+
+    beforeEach(() => {
+        const view = View.sinumerikView;
+        const pd = view.parseData;
+        view.singleLineDebugHelpDiv.C_As_Rot.input.checked = true;
+        view.programmData[pd.filename].machine.firstSpindle = {name: 'C4', num: '4'};
+        Object.assign(pd, {auxPos: {}, rotaryAngles: {}, moveGroup: 'G0', frameDirty: true});
+        pd.canvas.push = element => {
+            element.frameId = recordFrameState(pd);
+            updateTransmitAngle(pd, view.programmData[pd.filename].machine, element);
+            return Array.prototype.push.call(pd.canvas, element);
+        };
+    });
+
+    afterEach(() => {
+        View.sinumerikView.singleLineDebugHelpDiv.C_As_Rot.input.checked = false;
+        delete View.sinumerikView.programmData['/test/test.mpf'].machine.firstSpindle;
+    });
+
+    async function run(...rows) {
+        for (const row of rows) {
+            const primitive = await generatePrimitives(row, 'PROG', 0, rows, jest.fn());
+            generateCanvasPrimitives(primitive, 'PROG', 0);
+        }
+    }
+
+    const state = () => View.sinumerikView.parseData;
+    const end = () => state().canvas.at(-1);
+    const xy = (p, x, y) => {
+        expect(p.X).toBeCloseTo(x, 5);
+        expect(p.Y).toBeCloseTo(y, 5);
+    };
+
+    test('the drilling centre survives TRANS and stays fixed under AROT', async () => {
+        await run('G0 X0 Y0 Z10', 'G0 C4=22', 'SETMS(1)', 'G0 X60 Y0');
+        const centre = [60 * Math.cos(22 * DEG), 60 * Math.sin(22 * DEG)];
+        xy(end(), ...centre);
+        await run('TRANS X60 Y0', 'AROT Z18', 'G1 X10 Y0');
+        xy(end(), centre[0] + 10 * Math.cos(40 * DEG), centre[1] + 10 * Math.sin(40 * DEG));
+        await run('G1 X0 Y0');
+        const local = end();
+        xy(local, ...centre);
+        await run('TRANS', 'G1 X60 Y0');
+        xy(end(), ...centre);
+        expect(getCoordinatesInFrame(local, state().frames[local.frameId])[0]).toBeCloseTo(0);
+        expect(getCoordinatesInFrame(end(), state().frames[end().frameId])[0]).toBeCloseTo(60);
+    });
+
+    test('an indexed axis preserves omitted Y and explicit X, and reads IC in degrees', async () => {
+        await run('G0 X40 Y7', 'G0 C4=22', 'G0 C4=IC(5) X30');
+        expect(state().auxPos.C4).toBe(27);
+        const point = getCoordinatesInFrame(end());
+        expect(point[0]).toBeCloseTo(30);
+        expect(point[1]).toBeCloseTo(7);
+        await run('G0 C4=AC(17)');
+        expect(state().auxPos.C4).toBe(17);
+    });
+
+    test('chooses the explicit or master spindle and preserves the program frame on reset', async () => {
+        await run('G0 C4=22', 'SETMS(1)', 'SPCON(4)', 'SPCOF', 'TRANS X60');
+        expect(state().masterSpindleNum).toBe(1);
+        expect(state().auxPos.C4).toBe(22);
+        const length = state().canvas.length;
+        await run('N10 SPCOF(1, 4)');
+        expect(state().auxPos.C4).toBe(0);
+        expect(frame().trans.X).toBe(60);
+        expect(state().canvas).toHaveLength(length);
+        await run('G0 C4=22', 'SETMS');
+        expect(state().masterSpindleNum).toBe(4);
+        expect(state().auxPos.C4).toBe(0);
+    });
+
+    test('an invalid spindle list has no partial effect', async () => {
+        await run('G0 C4=22', 'SETMS(1)', 'SPCOF(4, WRONG)');
+        expect(state().auxPos.C4).toBe(22);
+        expect(state().masterSpindleNum).toBe(1);
+        expect(state().errors).toEqual(expect.arrayContaining([expect.objectContaining({text: expect.stringContaining('Invalid SPCOF')})]));
+    });
+
+    test('TRAFOOF keeps the point, the physical C4 and the motion group', async () => {
+        await run('G0 X0 Y0', 'G0 C4=22', 'TRANSMIT', 'TRANS X30', 'G1 X0 Y40');
+        const point = end();
+        xy(point, 30, 40);
+        expect(point.C4).toBeCloseTo(53.130102, 5);
+        const length = state().canvas.length;
+        await run('TRAFOOF');
+        expect(state().canvas).toHaveLength(length);
+        xy(state().axesPos, 30, 40);
+        expect(state().moveGroup).toBe('G1');
+        await run('TRANS', 'Z1');
+        xy(end(), 30, 40);
+        expect(getCoordinatesInFrame(end())[0]).toBeCloseTo(50);
+        expect(getCoordinatesInFrame(end())[1]).toBeCloseTo(0);
+    });
+
+    test('full TRANSMIT circle tracks physical C across the wrap', async () => {
+        Object.assign(state(), {plane: 'G17', planeAxes: ['X', 'Y', 'Z'], planeFirstAxes: ['X', 'Y'], planeCircleAxes: ['I', 'J']});
+        await run('G0 X10 Y0', 'TRANSMIT', 'G3 I-10 J0');
+        xy(end(), 10, 0);
+        expect(end().C4).toBeCloseTo(360);
+    });
+
+    test('a circle about an off-axis pole oscillates rather than turning C a full revolution', async () => {
+        Object.assign(state(), {plane: 'G17', planeAxes: ['X', 'Y', 'Z'], planeFirstAxes: ['X', 'Y'], planeCircleAxes: ['I', 'J']});
+        await run('G0 X70 Y0', 'TRANSMIT', 'G3 I-10 J0 TURN=5');
+        xy(end(), 70, 0);
+        expect(end().C4).toBeCloseTo(0);
+        for (const element of state().canvas.filter(el => el.transmitAxis)) {
+            expect(Math.abs(element.C4)).toBeLessThan(10);
+        }
+    });
+
+    test('TRANSMIT uses radial X under DIAMON and retains the angle at the centre', async () => {
+        state().diamon = 1;
+        await run('G0 X0 Y0', 'TRANSMIT', 'G1 X60 Y40', 'G1 X0 Y0', 'TRAFOOF');
+        expect(state().auxPos.C4).toBeCloseTo(53.130102, 5);
+        xy(state().axesPos, 0, 0);
+    });
+
+    test('indexing after an arc creates no cutting segment and keeps the modal motion', async () => {
+        Object.assign(state(), {plane: 'G17', planeAxes: ['X', 'Y', 'Z'], planeFirstAxes: ['X', 'Y'], planeCircleAxes: ['I', 'J']});
+        await run('G0 X10 Y0', 'G3 I-10 J0', 'C4=90');
+        expect(state().moveGroup).toBe('G3');
+        expect(end().type).toBe('transform');
+        xy(end(), 0, 10);
+    });
+
+    test.each([0, 90, 180, 270])('ANG/RND in indexed G18 at C=%i stays in the offset machining plane', async angle => {
+        const {insertRnd} = require('../lib/element-insert');
+        insertRnd.mockImplementation(jest.requireActual('../lib/element-insert').insertRnd);
+        Object.assign(state(), {plane: 'G18', diamon: 1});
+        try {
+            await run('G0 C4=' + angle, 'G0 X136 Y1.6 Z-20');
+            const first = state().canvas.length;
+            await run('G1 X136.6 ANG=173 RND=10', 'G1 Z-127.85', 'G3 I-10 K0 AR=45', 'G1 Z-140 ANG=-135');
+            const path = state().canvas.slice(first);
+            expect(path.length).toBeGreaterThan(30);
+            let previous = state().canvas[first - 1];
+            for (const el of path) {
+                for (const axis of ['X', 'Y', 'Z']) expect(el[axis + '_start']).toBeCloseTo(previous[axis], 6);
+                expect(getCoordinatesInFrame(el)[1]).toBeCloseTo(1.6, 6);
+                previous = el;
+            }
+            expect(state().errors).toEqual([]);
+        } finally {
+            insertRnd.mockReset();
+        }
+    });
+
+    test('G64 in the setup block allows G17 polar moves and the later G19 switch', async () => {
+        const pd = state();
+        require('../lib/coordinates').clearAxesPos(pd.filename);
+        pd.plane = 'G18';
+        pd.diamon = 0;
+        await run('TRANSMIT', 'G54 G90 G64 SOFT G17', 'ROT Z359.33', 'G111 X0 Y0',
+            'G0 AP=-30 RP=55 Z100');
+        expect(pd.plane).toBe('G17');
+        const azimuth = (359.33 - 30) * DEG;
+        xy(end(), 55 * Math.cos(azimuth), 55 * Math.sin(azimuth));
+        expect(end().Z).toBe(100);
+        await run('Z-2.7', 'G1 AP=-18.5', 'RP=42.75', 'G2 AP=-71.5');
+        expect(Math.hypot(end().X, end().Y)).toBeCloseTo(42.75);
+        expect(end().Z).toBeCloseTo(-2.7);
+        await run('TRAFOOF', 'G54 G90 G64 SOFT G19');
+        expect(pd.planeFirstAxes).toEqual(['Y', 'Z']);
+    });
+
+    test('combined A and B follow the A-then-B convention', async () => {
+        await run('G0 A90 B90', 'G1 X0 Y1 Z0');
+        expect(end().X).toBeCloseTo(1);
+        expect(end().Y).toBeCloseTo(0);
+        expect(end().Z).toBeCloseTo(0);
+    });
+
+    test('linear interpolation with simultaneous C motion preserves the radius', async () => {
+        await run('G0 X10 Y0 Z0', 'G1 Z10 C4=90');
+        const middle = state().canvas.find(el => Math.abs(el.Z - 5) < 0.12);
+        expect(Math.hypot(middle.X, middle.Y)).toBeCloseTo(10);
+        expect(Math.abs(middle.C4 - 45)).toBeLessThanOrEqual(1);
+        xy(end(), 0, 10);
+    });
+});

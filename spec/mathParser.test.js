@@ -315,3 +315,19 @@ describe('mathParse', () => {
         });
     });
 });
+
+test('the configured lathe spindle reads as zero without losing its simulated position', () => {
+    const view = require('../lib/sinumerik').default.sinumerikView;
+    const {mathParse} = require('../lib/mathParser');
+    const original = view.singleLineDebugData;
+    view.singleLineDebugData = {machine: {machineType: 'Lathe', firstSpindle: {name: 'C4'}}};
+    try {
+        view.parseData.auxPos = {B: 12};
+        expect(mathParse('$AA_IW[C4]+22', 'prog', 0)).toBe(22);
+        view.parseData.auxPos.C4 = 53;
+        expect(mathParse('$AA_IW[C4]+$AA_IW[B]', 'prog', 0)).toBe(12);
+        expect(view.parseData.auxPos.C4).toBe(53);
+    } finally {
+        view.singleLineDebugData = original;
+    }
+});

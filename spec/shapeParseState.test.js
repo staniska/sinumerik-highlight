@@ -38,6 +38,8 @@ function makeParseData() {
         frameDirty: false,
         auxAxes: ['A', 'C2'],
         auxPos: {A: 90, C2: 180},
+        rotaryAngles: {A: 90, C: 180},
+        masterSpindleNum: 2,
         // The program's own variable history, which a tool file must not touch.
         variableLog: {'*': {R1: [{at: 0, value: 5}]}},
         variablesSeen: {'*': {R1: 5}},

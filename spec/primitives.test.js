@@ -87,7 +87,7 @@ global.atom = {
     workspace: {getActiveTextEditor: () => ({getTitle: () => 'test.mpf', getPath: () => '/test/test.mpf'})}
 };
 
-const {addY_for_C_rot, generatePrimitives, generateCanvasPrimitives, applyFeedSpindleMode} = require('../lib/primitives');
+const {generatePrimitives, generateCanvasPrimitives, applyFeedSpindleMode} = require('../lib/primitives');
 const {mathParse, calcValue} = require('../lib/mathParser');
 
 let View;
@@ -217,50 +217,6 @@ describe('feed and spindle speed modes', () => {
         } finally {
             global.document = originalDocument;
         }
-    });
-});
-
-// --- addY_for_C_rot ---
-
-describe('addY_for_C_rot', () => {
-    test('adds Y=0 operator for Lathe without transformation and no Y', () => {
-        View.sinumerikView.parseData.transformation = null;
-        const primitives = {operators: [{type: 'coordinate', name: 'X', value: 10}]};
-
-        addY_for_C_rot(primitives);
-
-        expect(primitives.operators).toContainEqual({type: 'coordinate', name: 'Y', value: 0});
-    });
-
-    test('does not add Y when Y coordinate already present', () => {
-        View.sinumerikView.parseData.transformation = null;
-        const primitives = {operators: [
-            {type: 'coordinate', name: 'X', value: 10},
-            {type: 'coordinate', name: 'Y', value: 5}
-        ]};
-
-        addY_for_C_rot(primitives);
-
-        expect(primitives.operators.filter(o => o.name === 'Y').length).toBe(1);
-    });
-
-    test('does not add Y when machine is not Lathe', () => {
-        View.sinumerikView.programmData['/test/test.mpf'].machine.machineType = 'Mill';
-        View.sinumerikView.parseData.transformation = null;
-        const primitives = {operators: [{type: 'coordinate', name: 'X', value: 10}]};
-
-        addY_for_C_rot(primitives);
-
-        expect(primitives.operators.find(o => o.name === 'Y')).toBeUndefined();
-    });
-
-    test('does not add Y when transformation is active', () => {
-        View.sinumerikView.parseData.transformation = 'TRANSMIT';
-        const primitives = {operators: [{type: 'coordinate', name: 'X', value: 10}]};
-
-        addY_for_C_rot(primitives);
-
-        expect(primitives.operators.find(o => o.name === 'Y')).toBeUndefined();
     });
 });
 
