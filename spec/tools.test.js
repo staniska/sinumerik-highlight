@@ -42,6 +42,33 @@ const withOpenProgram = path => {
 
 afterEach(() => {
     delete globalThis.atom;
+    delete globalThis.document;
+});
+
+describe('tool search', () => {
+    const {filterToolEntries} = require('../lib/tools');
+    const entries = [{name: '0', noTool: true}, {name: 'SmallDrill'}, {name: 'Drill10'}, {name: 'DRILL20'}];
+
+    test('matches mixed-case names and puts prefixes before substrings', () => {
+        expect(filterToolEntries(entries, ' drill ')).toEqual([entries[2], entries[3], entries[1]]);
+        expect(filterToolEntries(entries, '10')).toEqual([entries[2]]);
+        expect(entries[1].name).toBe('SmallDrill');
+    });
+
+    test('empty query preserves order; no match returns no entries', () => {
+        expect(filterToolEntries(entries, '  ')).toEqual(entries);
+        expect(filterToolEntries(entries, 'missing')).toEqual([]);
+    });
+
+    test('No tool can be found by its label or marker value', () => {
+        expect(filterToolEntries(entries, 'no tool')).toEqual([entries[0]]);
+        expect(filterToolEntries(entries, '0')).toContain(entries[0]);
+    });
+
+    test('all matches remain available beyond the autocomplete limit', () => {
+        const many = Array.from({length: 80}, (_, i) => ({name: `Tool${i}`}));
+        expect(filterToolEntries(many, 'tool')).toEqual(many);
+    });
 });
 
 describe('reading a machine tool list', () => {
@@ -207,6 +234,71 @@ describe('keyboard navigation', () => {
     });
 
     const press = key => handleToolsKey({key, preventDefault: () => {}, stopPropagation: () => {}});
+
+    // Small DOM stand-in for list rendering; the preview canvas is omitted.
+    const withSearch = (value = '') => {
+        const element = () => ({
+            children: [], dataset: {},
+            classList: {add: jest.fn(), toggle: jest.fn()},
+            addEventListener: jest.fn(), scrollIntoView: jest.fn(),
+            appendChild(child) { this.children.push(child); },
+            removeChild(child) { this.children.splice(this.children.indexOf(child), 1); },
+            get firstChild() { return this.children[0]; },
+        });
+        globalThis.document = {createElement: element};
+        const search = {value, focus: jest.fn(), setSelectionRange: jest.fn()};
+        View.sinumerikView.toolsPanelBody = {
+            search, toolsList: element(), insertButton: {}, deleteButton: {},
+        };
+        return View.sinumerikView.toolsPanelBody;
+    };
+
+    test('typing outside Search focuses it and includes the first character', () => {
+        const body = withSearch();
+        expect(press('b')).toBe(true);
+        expect(body.search.focus).toHaveBeenCalledTimes(1);
+        expect(body.search.value).toBe('b');
+        expect(body.toolsList.children.map(row => row.dataset.toolName)).toEqual(['B']);
+        press('Enter');
+        expect(inserted).toEqual([';TOOL:B\n']);
+    });
+
+    test('arrows wrap only through matches without moving focus or changing the query', () => {
+        View.sinumerikView.machineData = {tools: {LATHE1: [{name: 'AB'}, {name: 'C'}, {name: 'AX'}]}};
+        const body = withSearch();
+        press('a');
+        body.search.focus.mockClear();
+        const key = key => handleToolsKey({key, target: body.search});
+        key('ArrowDown'); // AX
+        key('ArrowDown'); // AB
+        key('ArrowUp'); // AX
+        expect(key('x')).toBe(false); // Native input continues typing.
+        expect(body.search.value).toBe('a');
+        expect(body.search.focus).not.toHaveBeenCalled();
+        key('Enter');
+        expect(inserted).toEqual([';TOOL:AX\n']);
+    });
+
+    test('no match clears the previous selection and prevents inserting it', () => {
+        const body = withSearch();
+        press('ArrowDown');
+        press('z');
+        expect(body.insertButton.disabled).toBe(true);
+        expect(body.deleteButton.disabled).toBe(true);
+        expect(body.toolsList.children[0].innerText).toBe('No matching tools');
+        expect(press('Enter')).toBe(false);
+        expect(inserted).toEqual([]);
+        expect(closed).toBe(0);
+    });
+
+    test('modifier shortcuts and composition do not start a search', () => {
+        const body = withSearch();
+        for (const modifier of ['ctrlKey', 'altKey', 'metaKey', 'isComposing']) {
+            expect(handleToolsKey({key: 'a', [modifier]: true})).toBe(false);
+        }
+        expect(body.search.value).toBe('');
+        expect(body.search.focus).not.toHaveBeenCalled();
+    });
 
     test('Down from nothing selected lands on the standing No tool row', () => {
         expect(press('ArrowDown')).toBe(true);
