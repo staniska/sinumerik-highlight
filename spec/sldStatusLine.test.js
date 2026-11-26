@@ -60,6 +60,12 @@ beforeEach(() => {
 });
 
 describe('with nothing wrong', () => {
+    test('a refused adaptive mesh is visible rather than reported as a clean trace', () => {
+        materialTraceReport.mockReturnValue({status: 'gridBudget'});
+        updateSldStatusLine();
+        expect(stringDiv.innerText).toMatch(/ADAPTIVE MESH: memory limit/);
+        expect(stringDiv.classList.has('sinumerikSLDStringDiv--error')).toBe(true);
+    });
     test('says the parse is fine', () => {
         updateSldStatusLine();
         expect(stringDiv.innerText).toBe('PARSE OK');

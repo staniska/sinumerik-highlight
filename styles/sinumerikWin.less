@@ -1111,6 +1111,7 @@
 // sinumerik-view.js
 .sinumerikButton--savePanelWidth {
   margin-left: auto;
+  flex: 0 0 auto;
   border-radius: 10px;
 }
 
@@ -1224,6 +1225,11 @@
   flex-shrink: 0;
 }
 
+.sinumerikSLDGridControls {
+  // Reserve enough space for adaptiveGrid inside a button inset by 5%.
+  min-width: 10em;
+}
+
 
 // single-line-debug.js: parse string bar
 .sinumerikSLDParseStringDiv {
@@ -1316,9 +1322,43 @@
   background-color: @sin-inset-bg;
 }
 
-// single-line-debug.js: info / controls div
+// The machine name and display units belong to SLD, including while other tabs
+// keep the same header. Keep the actual select mounted so its value survives.
+.sinumerikSLDHeaderInfo {
+  display: none;
+  align-items: baseline;
+  align-self: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+[data-active-tab="singleLine"] .sinumerikSLDHeaderInfo {
+  display: flex;
+}
+
 .sinumerikSLDMachineName {
   font-weight: bold;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-active-tab="singleLine"] .sinumerikSLDHeaderInfo + .sinumerikButton--savePanelWidth {
+  margin-left: 0;
+}
+
+.sinumerikSLDHeaderUnits {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.sinumerikSLDHeaderUnits .sinumerikSLDSelect {
+  margin-top: 0;
 }
 
 .sinumerikSLDCheckDiv {
@@ -1331,7 +1371,7 @@
 }
 
 .sinumerikSLDUnitsLabel {
-  margin-top: 9px;
+  white-space: nowrap;
 }
 
 .sinumerikSLDCheckbox {
@@ -1379,6 +1419,7 @@
 @slow-active-mid: fade(@sin-text-success, 35%);
 
 .sinumerikSLDSlowButton {
+  box-sizing: border-box;
   width: 90%;
   margin-left: 5%;
   --slow-on:  ~"@{slow-idle-on}";
@@ -1390,6 +1431,13 @@
   border-color: @sin-text-success;
   --slow-on:  ~"@{slow-active-on}";
   --slow-mid: ~"@{slow-active-mid}";
+}
+
+.sinumerikSLDAdaptiveGridButton {
+  background-color: @slow-idle-mid;
+  &.sinumerikSLDSlowButton--active {
+    background-color: @slow-active-mid;
+  }
 }
 
 // single-line-debug.js: shown over the slow-debug button while the press is

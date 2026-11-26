@@ -49,7 +49,7 @@ blank. See [Borrowing the previous program's stock](#borrowing-the-previous-prog
 
 Shapes (blank, contour) are always read from the saved file on disk, while the main program trajectory follows the live editor buffer. Editing a shape file and comparing the saved shape against the live trajectory makes the effect of every change immediately visible — save the file when the new shape is the one you want.
 
-A metric/inch toggle in the footer controls how the ruler numbers are displayed. It's display-only — it never changes what the program actually does; the toolpath itself always follows the machine's configured units or an explicit `G70`/`G71` in the code.
+The active machine name and **Units** selector sit in the header, to the left of **Save panel width**, and appear only on the SLDebug tab. Units controls how the ruler numbers are displayed. It is display-only: the toolpath follows the machine's configured units or an explicit `G70`/`G71` in the code. This selector is independent of ContourEdit's own metric/inch selector.
 
 #### WebGL renderer
 
@@ -241,8 +241,9 @@ Depths are distances into the part, radial or axial whichever the cut really was
 diameters when the program works in diameters.
 
 The material is held as columns along the turning axis, each with exact radial intervals, so the
-picture is exact across the diameter however long the part is. The step along the axis is 0.2 mm,
-coarsened automatically only for a part too long to hold at that. Scrubbing the progress bar and
+picture is exact across the diameter however long the part is. The default step along the axis is
+0.2 mm, coarsened automatically only for a part too long to hold at that. The optional adaptive
+grid is described below. Scrubbing the progress bar and
 stepping back are served by keyframes and an undo log rather than by replaying from the blank.
 
 One report comes before the others and says the rest cannot be trusted: **TRACE IS OFF** means the
@@ -252,6 +253,37 @@ there is no crash and no warning, only a picture that is quietly wrong by the sa
 everywhere.
 
 Turning only (G18). Milling is not covered: the column model needs a privileged axis.
+
+#### Adaptive grid
+
+The **adaptiveGrid** button below **Slow debug** selects the material grid:
+
+- **Grey (off, default):** uniform 0.2 mm columns along the turning axis.
+- **Green (on):** variable-width columns, up to 0.02 mm around faces, slopes, curves and
+  pass ends, and up to 0.5 mm where the radial sections remain constant.
+
+You can choose the grid before starting Slow debug. While Slow debug is enabled, clicking
+adaptiveGrid in either direction restarts drawing from the beginning with the newly selected
+grid. The previous material calculation, animation timers, pause and scrub position are reset.
+With Slow debug disabled, clicking the button only selects the grid for the next run.
+
+The grid is planned once before tracing and stays fixed throughout the run. Refinement follows
+the full swept cutting-edge and holder outlines, including their offsets, compensation and
+corner motion. A 10 mm wide insert therefore refines the region it actually covers, rather than
+just a narrow band around the programmed reference point. Pass endpoints and changes in the
+blank and finished-part profiles are included, even when a toolpath is horizontal or absent.
+
+For a straight axial boundary, 0.02 mm columns reduce the sampling displacement to about
+0.01 mm on either side, compared with 0.1 mm at the default step. This is an axial sampling
+limit, not a guarantee of overall geometric accuracy. Fine regions cost more time and memory;
+a mostly tapered or curved job can approach the cost of a uniform 0.02 mm grid. If the adaptive
+layout exceeds its 100 MB array budget, a message is shown instead of silently reducing its
+accuracy. The default grid and IPS keep their existing 30 MB material-grid budget. Rewind history
+and rendering use additional memory, so these budgets are not limits on total application memory.
+
+The selected grid is shared by material removal, gouge and holder checks, rendering and rewind.
+It controls the turning-material trace shown in WebGL 2D; it does not add material rendering to
+Canvas 2D or 3D. IPS uses its own calculation, independently of adaptiveGrid.
 
 #### In-process stock (IPS)
 
@@ -266,9 +298,9 @@ folder. Redraw brings the real blank back.
 
 The contour is lines and arcs within 0.1 mm of the stock, so it is a handful of elements rather than
 a staircase, and it is written in the units and the diameter mode the program runs under. To hold
-that figure the run computes on a finer grid than the slow-debug animation uses — 0.05 mm columns
-against 0.2 mm — which costs it time it has, running once in the background, and buys the accuracy
-the animation cannot afford per frame. On a part too long to hold at that pitch the grid is
+that figure IPS computes on its own uniform 0.05 mm grid, independently of the animation's
+adaptiveGrid selection. This is finer than the default 0.2 mm animation grid and runs once in
+the background. On a part too long to hold at that pitch the grid is
 coarsened and the tolerance opens up with it, because a fitter held tighter than the steps it is
 smoothing returns the steps. Stock that came apart — parted off, or cut through by a groove
 — is offered as a row of small drawings to choose from.
@@ -390,6 +422,7 @@ before the end point. `G331`/`G332` (tapping) are not supported.
 - Thread cutting: G33 (constant pitch), G34 / G35 (progressive and degressive pitch), with SF — see above
 - DIAMON / DIAMOF / DIAM90
 - G70 / G700 (inch) and G71 / G710 (metric) — mid-program unit switching; the machine's own unit setting is the default when neither appears
+- G96 (constant surface speed) and G97 (fixed spindle RPM). G95 selects feed per revolution and also cancels constant surface speed unless G96 is present in the same block. Both `G95 G96` and `G96 G95` retain constant surface speed. These modes remain active for subsequent blocks and are used by machining-time estimation
 - [A]TRANS, [A]ROT & [A]MIRROR
 - Subroutines called from the same directory as the program or from the machine subroutine path, with parameters
 - R-variables

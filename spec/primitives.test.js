@@ -87,7 +87,7 @@ global.atom = {
     workspace: {getActiveTextEditor: () => ({getTitle: () => 'test.mpf', getPath: () => '/test/test.mpf'})}
 };
 
-const {addY_for_C_rot, generatePrimitives, generateCanvasPrimitives} = require('../lib/primitives');
+const {addY_for_C_rot, generatePrimitives, generateCanvasPrimitives, applyFeedSpindleMode} = require('../lib/primitives');
 const {mathParse, calcValue} = require('../lib/mathParser');
 
 let View;
@@ -129,6 +129,95 @@ beforeEach(() => {
         '/test/test.mpf': {machine: {machineType: 'Lathe'}, contour: {name: ''}}
     };
     View.sinumerikView.singleLineDebugHelpDiv.C_As_Rot.input.checked = false;
+});
+
+describe('feed and spindle speed modes', () => {
+    const block = async text => {
+        const primitive = await generatePrimitives(text, 'PROG', 0);
+        for (const op of primitive.operators) {
+            if (op.type === 'generalGroup15') applyFeedSpindleMode(View.sinumerikView.parseData, op.value, primitive);
+        }
+        return primitive;
+    };
+
+    beforeEach(() => {
+        View.sinumerikView.parseData.feed = {type: 'G94', value: 0.2};
+        View.sinumerikView.parseData.spindleSpeed = {type: 'G96', value: 200, limit: 3000};
+    });
+
+    test.each(['G97', 'G97\r'])('recognizes %j and leaves feed, S and LIMS unchanged', async text => {
+        const primitive = await block(text);
+        expect(primitive.operators).toContainEqual({type: 'generalGroup15', value: 'G97'});
+        expect(View.sinumerikView.parseData.spindleSpeed).toEqual({type: 'G97', value: 200, limit: 3000});
+        expect(View.sinumerikView.parseData.feed).toEqual({type: 'G94', value: 0.2});
+        expect(View.sinumerikView.parseData.errors).toEqual([]);
+    });
+
+    test('G95 alone cancels a previous G96 and selects feed per revolution', async () => {
+        await block('G95');
+        expect(View.sinumerikView.parseData.spindleSpeed).toEqual({type: 'G97', value: 200, limit: 3000});
+        expect(View.sinumerikView.parseData.feed).toEqual({type: 'G95', value: 0.2});
+        await block('G1 Z-10');
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G97');
+    });
+
+    test.each(['G95 G96', 'G96 G95', 'G95 G96\r'])('%s keeps constant surface speed regardless of word order', async text => {
+        View.sinumerikView.parseData.spindleSpeed.type = 'G97';
+        await block(text);
+        expect(View.sinumerikView.parseData.feed.type).toBe('G95');
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G96');
+        await block('G1 Z-10');
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G96');
+    });
+
+    test('a G96 in a previous block does not exempt a later G95', async () => {
+        await block('G96');
+        await block('G95');
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G97');
+        await block('G96');
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G96');
+    });
+
+    test.each(['G93', 'G94'])('%s changes feed mode without cancelling G96', async text => {
+        await block(text);
+        expect(View.sinumerikView.parseData.feed.type).toBe(text);
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G96');
+    });
+
+    test('a non-mode operand containing G96 does not suppress the G95 cancellation', () => {
+        applyFeedSpindleMode(View.sinumerikView.parseData, 'G95', {operators: [
+            {type: 'generalGroup15', value: 'G95'}, {type: 'MSG', value: 'G96'},
+        ]});
+        expect(View.sinumerikView.parseData.spindleSpeed.type).toBe('G97');
+    });
+
+    test('time estimation uses fixed RPM after either G97 or standalone G95', async () => {
+        const originalDocument = global.document;
+        const {createTimeDiv} = require('../lib/time');
+        const nodes = [];
+        global.document = {createElement: () => {
+            const node = {appendChild: jest.fn(), addEventListener: (event, fn) => {node[event] = fn;}};
+            nodes.push(node);
+            return node;
+        }};
+        try {
+            createTimeDiv();
+            const field = nodes[1];
+            field.closest = () => ({querySelector: () => nodes[2]});
+            for (const mode of ['G97', 'G95']) {
+                const pd = View.sinumerikView.parseData;
+                pd.feed = {type: 'G95', value: 0.2};
+                pd.spindleSpeed = {type: 'G96', value: 1000, limit: 3000};
+                await block(mode);
+                pd.canvas = [{type: 'G1', X_start: 100, X: 100, Y_start: 0, Y: 0,
+                    Z_start: 0, Z: 100, feed: {...pd.feed}, spindleSpeed: {...pd.spindleSpeed}}];
+                field.click({target: field});
+                expect(field.value).toBe('00:00:30');
+            }
+        } finally {
+            global.document = originalDocument;
+        }
+    });
 });
 
 // --- addY_for_C_rot ---
